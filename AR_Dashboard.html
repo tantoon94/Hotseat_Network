@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Seat Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; background: #222; color: #fff; margin: 0; }
+    .seat-dashboard {
+      display: none;
+      margin: 40px auto;
+      padding: 24px;
+      background: #333;
+      border-radius: 12px;
+      max-width: 400px;
+      box-shadow: 0 4px 24px #0008;
+      text-align: center;
+    }
+    .seat-title { font-size: 2em; margin-bottom: 16px; }
+    .seat-data { font-size: 1.5em; margin: 12px 0; }
+    .waiting { color: #aaa; }
+  </style>
+</head>
+<body>
+  <!-- Dashboards for each seat -->
+  <div id="dashboard-seat-1" class="seat-dashboard">
+    <div class="seat-title">Seat 1 Dashboard</div>
+    <div id="seat1-data" class="seat-data waiting">Waiting for data...</div>
+  </div>
+  <div id="dashboard-seat-2" class="seat-dashboard">
+    <div class="seat-title">Seat 2 Dashboard</div>
+    <div id="seat2-data" class="seat-data waiting">Waiting for data...</div>
+  </div>
+  <div id="dashboard-seat-3" class="seat-dashboard">
+    <div class="seat-title">Seat 3 Dashboard</div>
+    <div id="seat3-data" class="seat-data waiting">Waiting for data...</div>
+  </div>
+  <div id="dashboard-seat-4" class="seat-dashboard">
+    <div class="seat-title">Seat 4 Dashboard</div>
+    <div id="seat4-data" class="seat-data waiting">Waiting for data...</div>
+  </div>
+  <div id="dashboard-seat-5" class="seat-dashboard">
+    <div class="seat-title">Seat 5 Dashboard</div>
+    <div id="seat5-data" class="seat-data waiting">Waiting for data...</div>
+  </div>
+
+  <script>
+    // Show only the dashboard for the seat specified in the URL
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const seatId = urlParams.get('seat');
+      document.querySelectorAll('.seat-dashboard').forEach(el => el.style.display = 'none');
+      if (seatId && seatId >= 1 && seatId <= 5) {
+        const el = document.getElementById('dashboard-seat-' + seatId);
+        if (el) el.style.display = 'block';
+      } else {
+        // Optionally, show a message if no seat is specified
+        document.body.innerHTML = '<h2 style="text-align:center;margin-top:40px;">Invalid or missing seat number in link.</h2>';
+      }
+    });
+
+    // --- Example: Simulate live data update (replace with MQTT/WebSocket logic) ---
+    // This will update the dashboard after 2 seconds for demo purposes
+    setTimeout(() => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const seatId = urlParams.get('seat');
+      if (seatId && seatId >= 1 && seatId <= 5) {
+        document.getElementById('seat' + seatId + '-data').textContent =
+          `Count: 4 | Person: Adult | Avg Resistance: 16.39`;
+        document.getElementById('seat' + seatId + '-data').classList.remove('waiting');
+      }
+    }, 2000);
+    // ------------------------------------------------------------------------------
+
+    // TODO: Replace the above setTimeout with your MQTT/WebSocket data update logic!
+  </script>
+</body>
+</html>
