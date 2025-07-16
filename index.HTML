@@ -1,13 +1,1146 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Unity Dashboard Web Interface</title>
+    <meta charset="UTF-8">
+    <title>Hotseat Network - AR Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- A-Frame for AR -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- MQTT.js for real-time data -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: url('Img/IMG_2532.JPG') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                135deg,
+                rgba(0, 0, 0, 0.3) 0%,
+                rgba(138, 43, 226, 0.1) 25%,
+                rgba(255, 20, 147, 0.1) 50%,
+                rgba(30, 144, 255, 0.1) 75%,
+                rgba(0, 0, 0, 0.3) 100%
+            );
+            z-index: -1;
+        }
+
+        /* Add subtle glow effects to match the seats */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(
+                circle at 20% 50%,
+                rgba(138, 43, 226, 0.05) 0%,
+                transparent 50%
+            ),
+            radial-gradient(
+                circle at 80% 20%,
+                rgba(255, 20, 147, 0.05) 0%,
+                transparent 50%
+            ),
+            radial-gradient(
+                circle at 40% 80%,
+                rgba(30, 144, 255, 0.05) 0%,
+                transparent 50%
+            );
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* AR Scene Styles */
+        .ar-scene {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            display: none;
+        }
+
+        .ar-scene.active {
+            display: block;
+        }
+
+        /* Main Dashboard Styles */
+        .dashboard-container {
+            min-height: 100vh;
+            padding: 20px;
+            background: transparent;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.7), 0 0 20px rgba(255,255,255,0.3);
+            background: linear-gradient(45deg, #8a2be2, #ff1493, #1e90ff, #00ced1);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 4s ease-in-out infinite;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(138, 43, 226, 0.3), 0 0 40px rgba(255, 20, 147, 0.2);
+            }
+            50% { 
+                box-shadow: 0 0 30px rgba(138, 43, 226, 0.5), 0 0 60px rgba(255, 20, 147, 0.4);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .seat-card {
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .seat-card:nth-child(2) { animation-delay: 1s; }
+        .seat-card:nth-child(3) { animation-delay: 2s; }
+        .seat-card:nth-child(4) { animation-delay: 3s; }
+        .seat-card:nth-child(5) { animation-delay: 4s; }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #8a2be2, #ff1493);
+            color: white;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4), 0 0 20px rgba(255, 20, 147, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(138, 43, 226, 0.6), 0 0 30px rgba(255, 20, 147, 0.3);
+            background: linear-gradient(45deg, #ff1493, #1e90ff);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #1e90ff, #00ced1);
+            color: white;
+            box-shadow: 0 4px 15px rgba(30, 144, 255, 0.4), 0 0 20px rgba(0, 206, 209, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-secondary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn-secondary:hover::before {
+            left: 100%;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(30, 144, 255, 0.6), 0 0 30px rgba(0, 206, 209, 0.3);
+            background: linear-gradient(45deg, #00ced1, #8a2be2);
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .seat-card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .seat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+        }
+
+        .seat-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(138, 43, 226, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .seat-card:hover::before {
+            background: linear-gradient(90deg, transparent, #8a2be2, #ff1493, #1e90ff, transparent);
+        }
+
+        .seat-card h3 {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            text-align: center;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .seat-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 18px;
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.6), rgba(255, 20, 147, 0.6));
+            color: white;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 15px rgba(138, 43, 226, 0.2);
+            backdrop-filter: blur(8px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.6s;
+        }
+
+        .stat-item:hover::before {
+            left: 100%;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 20px rgba(255, 20, 147, 0.3);
+            background: linear-gradient(135deg, rgba(255, 20, 147, 0.7), rgba(30, 144, 255, 0.7));
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        /* Charts Section */
+        .charts-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .charts-section h2 {
+            color: #fff;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+
+        .charts-section h3 {
+            color: #fff;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* AR Instructions */
+        .ar-instructions {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            z-index: 1001;
+            font-family: Arial, sans-serif;
+            display: none;
+        }
+
+        .ar-instructions.active {
+            display: block;
+        }
+
+        /* Loading States */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+
+        /* MQTT Status */
+        .mqtt-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1002;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .mqtt-connected {
+            background: rgba(39, 174, 96, 0.8);
+        }
+
+        .mqtt-disconnected {
+            background: rgba(231, 76, 60, 0.8);
+        }
+    </style>
 </head>
 <body>
-  <h1>Unity Dashboard Web Augmentation</h1>
-  <p>This is a placeholder page for your Unity-based AR dashboard.</p>
+    <!-- MQTT Status Indicator -->
+    <div id="mqtt-status" class="mqtt-status mqtt-disconnected">
+        MQTT: Disconnected
+    </div>
+
+    <!-- AR Instructions -->
+    <div id="ar-instructions" class="ar-instructions">
+        Point camera at seat QR code to view dashboard
+    </div>
+
+    <!-- AR Scene -->
+    <div id="ar-scene" class="ar-scene">
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+        <a-entity camera>
+            <a-cursor raycaster="objects: .clickable"></a-cursor>
+        </a-entity>
+        
+            <!-- AR Dashboard -->
+            <a-entity id="ar-dashboard" visible="false">
+            <a-plane position="0 0.5 0" 
+                     rotation="-90 0 0" 
+                         width="2.5" 
+                         height="2" 
+                     color="#ffffff"
+                     class="clickable">
+                
+                <a-text value="Seat Dashboard" 
+                            position="0 0.8 0.01" 
+                        align="center" 
+                        color="#000000" 
+                            scale="0.4 0.4 1"></a-text>
+                    
+                    <a-text value="Count: Loading..." 
+                            position="-1 0.3 0.01" 
+                            align="left" 
+                            color="#000000" 
+                            scale="0.25 0.25 1"
+                            id="ar-occupancy"></a-text>
+                    
+                    <a-text value="Session: Loading..." 
+                            position="1 0.3 0.01" 
+                            align="right" 
+                            color="#000000" 
+                            scale="0.25 0.25 1"
+                            id="ar-session"></a-text>
+                    
+                    <a-text value="Resistance: Loading..." 
+                            position="-1 -0.2 0.01" 
+                        align="left" 
+                        color="#000000" 
+                            scale="0.25 0.25 1"
+                            id="ar-count"></a-text>
+                
+                    <a-text value="Type: Loading..." 
+                            position="1 -0.2 0.01" 
+                        align="right" 
+                        color="#000000" 
+                            scale="0.25 0.25 1"
+                            id="ar-avg-time"></a-text>
+                
+                <!-- Close button -->
+                    <a-plane position="1.1 0.9 0.01" 
+                             width="0.15" 
+                             height="0.08" 
+                         color="#ff0000"
+                         class="clickable"
+                             id="ar-close-btn">
+                    <a-text value="X" 
+                            position="0 0 0.01" 
+                            align="center" 
+                            color="#ffffff" 
+                                scale="0.4 0.4 1"></a-text>
+                    </a-plane>
+            </a-plane>
+        </a-entity>
+    </a-scene>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="main-dashboard" class="dashboard-container">
+        <div class="header">
+            <h1>Hotseat Network Dashboard</h1>
+            <p>Real-time seat utilization monitoring and analytics</p>
+        </div>
+
+        <div class="controls">
+            <button id="ar-toggle" class="btn btn-primary">Enable AR Mode</button>
+            <button id="refresh-data" class="btn btn-secondary">Refresh Data</button>
+            <a href="#charts" class="btn btn-secondary">View Analytics</a>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Connecting to MQTT broker...</p>
+        </div>
+
+        <div id="dashboard-grid" class="dashboard-grid" style="display: none;">
+            <!-- Seat cards will be dynamically generated -->
+        </div>
+
+        <div id="charts" class="charts-section" style="display: none;">
+            <h2>Analytics Overview</h2>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 style="text-align: center; margin-bottom: 10px; color: #fff;">Live Seat Counts</h3>
+                    <canvas id="count-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3 style="text-align: center; margin-bottom: 10px; color: #fff;">Average Resistance (Ω)</h3>
+                    <canvas id="resistance-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // MQTT Configuration
+        const MQTT_CONFIG = {
+            host: 'mqtt.cetools.org', // Default fallback
+            port: 8090, // Correct port
+            username: 'student',
+            password: 'ce2021-mqtt-forget-whale',
+            clientId: 'hotseat-dashboard-' + Math.random().toString(16).substr(2, 8)
+        };
+
+        // Global variables
+        let mqttClient = null;
+        let seatData = {};
+        let currentARSeat = null;
+        let charts = {};
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeMQTT();
+            setupEventListeners();
+            generateSeatCards();
+        });
+
+        // MQTT Connection
+        function initializeMQTT() {
+            // Load credentials from external file (you'll need to create this)
+            loadMQTTCredentials().then(() => {
+                connectMQTT();
+            }).catch(() => {
+                // Fallback to demo mode
+                console.log('Using demo mode - no MQTT connection');
+                simulateMQTTData();
+            });
+        }
+
+        async function loadMQTTCredentials() {
+            try {
+                // Add cache-busting parameter to force fresh load
+                const response = await fetch('mqtt-config.json?t=' + Date.now());
+                const config = await response.json();
+                console.log('Loaded MQTT config:', config);
+                Object.assign(MQTT_CONFIG, config);
+            } catch (error) {
+                console.log('No MQTT config file found, using defaults');
+            }
+        }
+
+        function connectMQTT() {
+            console.log('MQTT_CONFIG loaded:', MQTT_CONFIG);
+            
+            // Try different connection URLs
+            const connectUrls = [
+                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`
+            ];
+            
+            console.log('Attempting to connect to MQTT broker...');
+            console.log('MQTT Config - Host:', MQTT_CONFIG.host, 'Port:', MQTT_CONFIG.port);
+            console.log('Trying URLs:', connectUrls);
+            
+            // Try the first URL
+            const connectUrl = connectUrls[0];
+            console.log('Using URL:', connectUrl);
+            
+            mqttClient = mqtt.connect(connectUrl, {
+                clientId: MQTT_CONFIG.clientId,
+                username: MQTT_CONFIG.username,
+                password: MQTT_CONFIG.password,
+                clean: true,
+                reconnectPeriod: 1000,
+                connectTimeout: 30 * 1000,
+                keepalive: 60
+            });
+
+            mqttClient.on('connect', function() {
+                console.log('✅ Successfully connected to MQTT broker');
+                updateMQTTStatus(true);
+                hideLoading();
+                
+                // Subscribe to both topics
+                console.log('Subscribing to topics...');
+                mqttClient.subscribe('student/ucbqmie/sitting_events', function(err) {
+                    if (err) {
+                        console.error('Error subscribing to sitting_events:', err);
+                    } else {
+                        console.log('✅ Subscribed to student/ucbqmie/sitting_events');
+                    }
+                });
+                mqttClient.subscribe('student/ucbqmie/seat_counts', function(err) {
+                    if (err) {
+                        console.error('Error subscribing to seat_counts:', err);
+                    } else {
+                        console.log('✅ Subscribed to student/ucbqmie/seat_counts');
+                    }
+                });
+            });
+
+            mqttClient.on('message', function(topic, message) {
+                try {
+                    const data = JSON.parse(message.toString());
+                    console.log('Received MQTT data from topic:', topic, data);
+                    
+                    if (topic === 'student/ucbqmie/sitting_events') {
+                        // Handle sitting events data with exact format
+                        if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
+                            console.log('Processing sitting event for seat:', data.seat_id);
+                            updateSeatData(data.seat_id.toString(), data);
+                        }
+                    } else if (topic === 'student/ucbqmie/seat_counts') {
+                        // Handle seat counts data with exact format
+                        handleSeatCounts(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing MQTT message:', error);
+                }
+            });
+
+            mqttClient.on('error', function(error) {
+                console.error('❌ MQTT Error:', error);
+                updateMQTTStatus(false);
+            });
+
+            mqttClient.on('close', function() {
+                console.log('🔌 MQTT connection closed');
+                updateMQTTStatus(false);
+            });
+
+            mqttClient.on('reconnect', function() {
+                console.log('🔄 Attempting to reconnect to MQTT broker...');
+            });
+
+            mqttClient.on('offline', function() {
+                console.log('📴 MQTT client went offline');
+                updateMQTTStatus(false);
+            });
+        }
+
+        function updateMQTTStatus(connected) {
+            const statusEl = document.getElementById('mqtt-status');
+            if (connected) {
+                statusEl.textContent = 'MQTT: Connected';
+                statusEl.className = 'mqtt-status mqtt-connected';
+            } else {
+                statusEl.textContent = 'MQTT: Disconnected';
+                statusEl.className = 'mqtt-status mqtt-disconnected';
+            }
+        }
+
+        // Demo data simulation
+        function simulateMQTTData() {
+            hideLoading();
+            
+            // Generate initial data using the actual sensor data structure
+            for (let i = 1; i <= 5; i++) {
+                const mockData = {
+                    seat_id: i,
+                    count: Math.floor(Math.random() * 50) + 10,
+                    session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
+                    session_duration_ms: Math.floor(Math.random() * 300000) + 60000,
+                    average_resistance: Math.random() * 50 + 10,
+                    person_type: Math.random() > 0.5 ? "Adult" : "Child"
+                };
+                updateSeatData(i.toString(), mockData);
+            }
+
+            // Simulate real-time updates
+            setInterval(() => {
+                for (let i = 1; i <= 5; i++) {
+            const mockData = {
+                        seat_id: i,
+                        count: Math.floor(Math.random() * 50) + 10,
+                        session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                        session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
+                        session_duration_ms: Math.floor(Math.random() * 300000) + 60000,
+                        average_resistance: Math.random() * 50 + 10,
+                        person_type: Math.random() > 0.5 ? "Adult" : "Child"
+                    };
+                    updateSeatData(i.toString(), mockData);
+                }
+            }, 5000);
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            document.getElementById('ar-toggle').addEventListener('click', toggleARMode);
+            document.getElementById('refresh-data').addEventListener('click', refreshData);
+            
+            // AR close button
+            document.addEventListener('click', function(event) {
+                if (event.target.id === 'ar-close-btn' || event.target.closest('#ar-close-btn')) {
+                    closeARDashboard();
+                }
+            });
+        }
+
+        function toggleARMode() {
+            const arScene = document.getElementById('ar-scene');
+            const mainDashboard = document.getElementById('main-dashboard');
+            const instructions = document.getElementById('ar-instructions');
+            const button = document.getElementById('ar-toggle');
+
+            if (arScene.classList.contains('active')) {
+                // Disable AR
+                arScene.classList.remove('active');
+                instructions.classList.remove('active');
+                mainDashboard.style.display = 'block';
+                button.textContent = 'Enable AR Mode';
+            } else {
+                // Enable AR
+                arScene.classList.add('active');
+                instructions.classList.add('active');
+                mainDashboard.style.display = 'none';
+                button.textContent = 'Disable AR Mode';
+            }
+        }
+
+        function closeARDashboard() {
+            const arDashboard = document.getElementById('ar-dashboard');
+            arDashboard.setAttribute('visible', false);
+            currentARSeat = null;
+        }
+
+        function refreshData() {
+            // Trigger data refresh
+            if (mqttClient && mqttClient.connected) {
+                // Request fresh data from broker
+                for (let i = 1; i <= 5; i++) {
+                    mqttClient.publish(`hotseat/seat${i}/request`, 'refresh');
+                }
+            }
+        }
+
+        // Generate seat cards
+        function generateSeatCards() {
+            const grid = document.getElementById('dashboard-grid');
+            grid.innerHTML = '';
+
+            for (let i = 1; i <= 5; i++) {
+                const card = document.createElement('div');
+                card.className = 'seat-card';
+                card.innerHTML = `
+                    <h3>Seat ${i}</h3>
+                    <div class="seat-stats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="seat${i}-count">--</span>
+                            <span class="stat-label">Total Count</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="seat${i}-duration">--</span>
+                            <span class="stat-label">Session (min)</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="seat${i}-resistance">--</span>
+                            <span class="stat-label">Avg Resistance (Ω)</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="seat${i}-person">--</span>
+                            <span class="stat-label">Person Type</span>
+                        </div>
+                    </div>
+                    <div class="session-info" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(5px);">
+                        <div style="font-size: 0.9em; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">
+                            <div>Last Session: <span id="seat${i}-last-session">--</span></div>
+                            <div>Duration: <span id="seat${i}-session-duration">--</span></div>
+                        </div>
+                        <div style="margin-top: 10px; text-align: center;">
+                            <a href="seat${i}.html" style="color: #fff; text-decoration: none; padding: 8px 16px; background: rgba(255, 255, 255, 0.2); border-radius: 6px; font-size: 0.9em; transition: all 0.3s ease; display: inline-block;">
+                                View Details →
+                            </a>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+            
+            // Add Analytics card
+            const analyticsCard = document.createElement('div');
+            analyticsCard.className = 'seat-card analytics-card';
+            analyticsCard.style.cursor = 'pointer';
+            analyticsCard.onclick = () => window.location.href = 'analytics.html';
+            analyticsCard.innerHTML = `
+                <h3>📊 Analytics</h3>
+                <div class="seat-stats">
+                    <div class="stat-item">
+                        <span class="stat-value">📈</span>
+                        <span class="stat-label">Historical Data</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">📊</span>
+                        <span class="stat-label">Trends & Insights</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">📅</span>
+                        <span class="stat-label">Date Range</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value">🔍</span>
+                        <span class="stat-label">Deep Analysis</span>
+                    </div>
+                </div>
+                <div class="session-info" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.2); backdrop-filter: blur(5px);">
+                    <div style="font-size: 0.9em; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); text-align: center;">
+                        <div>View detailed analytics and historical trends</div>
+                    </div>
+                    <div style="margin-top: 10px; text-align: center;">
+                        <span style="color: #fff; text-decoration: none; padding: 8px 16px; background: rgba(255, 255, 255, 0.2); border-radius: 6px; font-size: 0.9em; transition: all 0.3s ease; display: inline-block;">
+                            Open Analytics →
+                        </span>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(analyticsCard);
+        }
+
+        // Update seat data
+        function updateSeatData(seatId, data) {
+            seatData[seatId] = data;
+            
+            // Calculate session duration in minutes
+            const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+            
+            // Update main dashboard with actual sensor data
+            document.getElementById(`seat${seatId}-count`).textContent = data.count;
+            document.getElementById(`seat${seatId}-duration`).textContent = sessionDurationMinutes;
+            document.getElementById(`seat${seatId}-resistance`).textContent = data.average_resistance.toFixed(2);
+            document.getElementById(`seat${seatId}-person`).textContent = data.person_type;
+            
+            // Update session info
+            document.getElementById(`seat${seatId}-last-session`).textContent = data.session_end_datetime;
+            document.getElementById(`seat${seatId}-session-duration`).textContent = `${sessionDurationMinutes} min`;
+
+            // Update AR dashboard if this seat is currently displayed
+            if (currentARSeat === seatId) {
+                updateARDashboard(data);
+            }
+
+            // Update charts
+            updateCharts();
+        }
+
+        function updateARDashboard(data) {
+            const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+            document.getElementById('ar-occupancy').setAttribute('value', `Count: ${data.count}`);
+            document.getElementById('ar-session').setAttribute('value', `Session: ${sessionDurationMinutes}min`);
+            document.getElementById('ar-count').setAttribute('value', `Resistance: ${data.average_resistance.toFixed(2)}Ω`);
+            document.getElementById('ar-avg-time').setAttribute('value', `Type: ${data.person_type}`);
+        }
+
+        function updateCharts() {
+            // Create charts if they don't exist
+            if (Object.keys(charts).length === 0) {
+                createCharts();
+            }
+
+            // Update count chart with live data
+            const countData = [];
+            const labels = [];
+            for (let i = 1; i <= 5; i++) {
+                const seatId = i.toString();
+                const data = seatData[seatId];
+                countData.push(data && data.count ? data.count : 0);
+                labels.push(`Seat ${i}`);
+            }
+            
+            charts.count.data.labels = labels;
+            charts.count.data.datasets[0].data = countData;
+            charts.count.update('active');
+
+            // Update resistance chart
+            const resistanceData = [];
+            for (let i = 1; i <= 5; i++) {
+                const seatId = i.toString();
+                const data = seatData[seatId];
+                resistanceData.push(data && data.average_resistance ? data.average_resistance : 0);
+            }
+            charts.resistance.data.datasets[0].data = resistanceData;
+            charts.resistance.update('active');
+        }
+
+        function createCharts() {
+            // Live Count Chart - Bar Chart
+            const countCtx = document.getElementById('count-chart').getContext('2d');
+            charts.count = new Chart(countCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Seat 1', 'Seat 2', 'Seat 3', 'Seat 4', 'Seat 5'],
+                    datasets: [{
+                        label: 'Live Count',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(138, 43, 226, 0.8)',
+                            'rgba(255, 20, 147, 0.8)',
+                            'rgba(30, 144, 255, 0.8)',
+                            'rgba(0, 206, 209, 0.8)',
+                            'rgba(255, 215, 0, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(138, 43, 226, 1)',
+                            'rgba(255, 20, 147, 1)',
+                            'rgba(30, 144, 255, 1)',
+                            'rgba(0, 206, 209, 1)',
+                            'rgba(255, 215, 0, 1)'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#fff',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            });
+
+            // Resistance Chart - Doughnut
+            const resistanceCtx = document.getElementById('resistance-chart').getContext('2d');
+            charts.resistance = new Chart(resistanceCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Seat 1', 'Seat 2', 'Seat 3', 'Seat 4', 'Seat 5'],
+                    datasets: [{
+                        label: 'Average Resistance (Ω)',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(138, 43, 226, 0.8)',
+                            'rgba(255, 20, 147, 0.8)',
+                            'rgba(30, 144, 255, 0.8)',
+                            'rgba(0, 206, 209, 0.8)',
+                            'rgba(255, 215, 0, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(138, 43, 226, 1)',
+                            'rgba(255, 20, 147, 1)',
+                            'rgba(30, 144, 255, 1)',
+                            'rgba(0, 206, 209, 1)',
+                            'rgba(255, 215, 0, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                },
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            });
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard-grid').style.display = 'grid';
+            document.getElementById('charts').style.display = 'block';
+        }
+
+        // QR Code handling for AR mode
+        function handleQRCode(seatId) {
+            if (seatId >= 1 && seatId <= 5) {
+                currentARSeat = seatId.toString();
+                const arDashboard = document.getElementById('ar-dashboard');
+                arDashboard.setAttribute('visible', true);
+                
+                // Update AR dashboard with current seat data
+                if (seatData[seatId]) {
+                    updateARDashboard(seatData[seatId]);
+                }
+            }
+        }
+
+        // Handle seat counts data
+        function handleSeatCounts(data) {
+            console.log('Processing seat counts data:', data);
+            
+            // Handle the exact format: {"seat_id": 5, "count": 12}
+            if (data && data.seat_id && data.count !== undefined) {
+                const seatId = data.seat_id;
+                if (seatId >= 1 && seatId <= 5) {
+                    // Update the count display for this seat
+                    const countElement = document.getElementById(`seat${seatId}-count`);
+                    if (countElement) {
+                        countElement.textContent = data.count;
+                    }
+                    
+                    // Also update the seat data object to keep charts in sync
+                    if (!seatData[seatId.toString()]) {
+                        seatData[seatId.toString()] = {};
+                    }
+                    seatData[seatId.toString()].count = data.count;
+                    
+                    // Update charts immediately for live updates
+                    updateCharts();
+                    
+                    console.log(`Updated seat ${seatId} count to ${data.count}`);
+                }
+            }
+        }
+
+        // Expose QR handling function globally for AR integration
+        window.handleQRCode = handleQRCode;
+    </script>
 </body>
+</html>
 </html>

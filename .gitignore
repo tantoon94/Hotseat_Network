@@ -19,3 +19,21 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# Ignore MQTT config (contains credentials)
+mqtt-config.json
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore QR code output directory
+qr_codes/
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore OS files
+.DS_Store
+Thumbs.db

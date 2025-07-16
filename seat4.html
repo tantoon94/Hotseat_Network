@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Seat 4 - Hotseat Network</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.0.0/dist/chartjs-chart-matrix.min.js"></script>
+    
+    <!-- MQTT.js for real-time data -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    
+    <!-- Firebase configuration -->
+    <script src="firebase-config.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: url('Img/IMG_2532.JPG') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                135deg,
+                rgba(0, 0, 0, 0.3) 0%,
+                rgba(138, 43, 226, 0.1) 25%,
+                rgba(255, 20, 147, 0.1) 50%,
+                rgba(30, 144, 255, 0.1) 75%,
+                rgba(0, 0, 0, 0.3) 100%
+            );
+            z-index: -1;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(
+                circle at 20% 50%,
+                rgba(138, 43, 226, 0.05) 0%,
+                transparent 50%
+            ),
+            radial-gradient(
+                circle at 80% 20%,
+                rgba(255, 20, 147, 0.05) 0%,
+                transparent 50%
+            ),
+            radial-gradient(
+                circle at 40% 80%,
+                rgba(30, 144, 255, 0.05) 0%,
+                transparent 50%
+            );
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .container {
+            min-height: 100vh;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.7), 0 0 20px rgba(255,255,255,0.3);
+            background: linear-gradient(45deg, #8a2be2, #ff1493, #1e90ff, #00ced1);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 4s ease-in-out infinite;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #8a2be2, #ff1493);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4), 0 0 20px rgba(255, 20, 147, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(138, 43, 226, 0.6), 0 0 30px rgba(255, 20, 147, 0.3);
+        }
+
+        .seat-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .seat-stats {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .seat-stats::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+        }
+
+        .seat-stats h2 {
+            color: #fff;
+            margin-bottom: 20px;
+            font-size: 2em;
+            text-align: center;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.6), rgba(255, 20, 147, 0.6));
+            color: white;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), 0 0 15px rgba(138, 43, 226, 0.2);
+            backdrop-filter: blur(8px);
+            transition: all 0.3s ease;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        .person-chart-section {
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        .person-chart-section h3 {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .donut-chart-container {
+            position: relative;
+            height: 200px;
+            margin: 0 auto;
+        }
+
+        .chart-section {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .chart-section h3 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+
+        .session-info {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .session-info h3 {
+            color: #fff;
+            margin-bottom: 15px;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .session-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .mqtt-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1002;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .mqtt-connected {
+            background: rgba(39, 174, 96, 0.8);
+        }
+
+        .mqtt-disconnected {
+            background: rgba(231, 76, 60, 0.8);
+        }
+
+        .heatmap-section {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(138, 43, 226, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .heatmap-section h3 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+
+        .heatmap-container {
+            position: relative;
+            height: 300px;
+        }
+
+        @media (max-width: 768px) {
+            .seat-dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .stat-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .session-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- MQTT Status Indicator -->
+    <div id="mqtt-status" class="mqtt-status mqtt-disconnected">
+        MQTT: Disconnected
+    </div>
+
+    <!-- Back Button -->
+    <a href="index.HTML" class="back-btn">← Back to Dashboard</a>
+
+    <div class="container">
+        <div class="header">
+            <h1>Seat 4 Dashboard</h1>
+            <p>Real-time statistics and analytics for Seat 4</p>
+        </div>
+
+        <div class="seat-dashboard">
+            <div class="seat-stats">
+                <h2>Live Statistics</h2>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span class="stat-value" id="seat4-count">--</span>
+                        <span class="stat-label">Total Count</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="seat4-duration">--</span>
+                        <span class="stat-label">Session (min)</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="seat4-resistance">--</span>
+                        <span class="stat-label">Avg Resistance (Ω)</span>
+                    </div>
+                </div>
+                
+                <!-- Person Type Donut Chart -->
+                <div class="person-chart-section">
+                    <h3>Total Person Type Counts</h3>
+                    <div class="donut-chart-container">
+                        <canvas id="person-donut-chart-4"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <h3>All Seats Comparison</h3>
+                <div class="chart-container">
+                    <canvas id="comparison-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="session-info">
+            <h3>Last Session Details</h3>
+            <div class="session-details">
+                <div>Start Time: <span id="seat4-start">--</span></div>
+                <div>End Time: <span id="seat4-end">--</span></div>
+                <div>Duration: <span id="seat4-session-duration">--</span></div>
+                <div>Last Update: <span id="seat4-last-update">--</span></div>
+            </div>
+        </div>
+
+        <!-- Heatmap Section -->
+        <div class="heatmap-section">
+            <h3>Daily Seat Usage Heatmap</h3>
+            <div class="heatmap-container">
+                <canvas id="usage-heatmap"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // MQTT Configuration
+        const MQTT_CONFIG = {
+            host: 'mqtt.cetools.org',
+            port: 8090,
+            username: 'student',
+            password: 'ce2021-mqtt-forget-whale',
+            clientId: 'seat4-dashboard-' + Math.random().toString(16).substr(2, 8)
+        };
+
+        // Global variables
+        let mqttClient = null;
+        let seatData = {};
+        let comparisonChart = null;
+        let personDonutChart = null;
+        let personTypeCounts = { 'Adult': 0, 'Child': 0, 'No Person': 0 };
+        let usageHeatmap = null;
+        let heatmapData = {};
+        let currentDate = new Date().toDateString();
+        let firestoreEnabled = false;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFirestore();
+            initializeMQTT();
+            createComparisonChart();
+            createPersonDonutChart();
+            createUsageHeatmap();
+            
+            // Check for daily reset
+            checkDailyReset();
+            
+            // Set up daily reset check every minute
+            setInterval(checkDailyReset, 60000);
+        });
+
+        // Firestore Initialization
+        function initializeFirestore() {
+            try {
+                // Check if Firebase is properly configured
+                if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+                    firestoreEnabled = true;
+                    console.log('✅ Firebase Firestore initialized successfully');
+                    
+                    // Load existing data from Firestore
+                    loadFirestoreData();
+                } else {
+                    console.warn('⚠️ Firebase not configured. Firestore features will be disabled.');
+                    firestoreEnabled = false;
+                }
+            } catch (error) {
+                console.error('❌ Error initializing Firestore:', error);
+                firestoreEnabled = false;
+            }
+        }
+
+        // Load existing data from Firestore
+        async function loadFirestoreData() {
+            if (!firestoreEnabled) return;
+            
+            try {
+                // Load today's usage data
+                const todayUsage = await FirestoreService.getTodayUsage();
+                if (todayUsage) {
+                    // Convert Firestore data to heatmap format
+                    for (let seat = 1; seat <= 5; seat++) {
+                        for (let hour = 10; hour <= 18; hour++) {
+                            const key = `${seat}-${hour}`;
+                            const count = todayUsage[`seat_${seat}`]?.[`hour_${hour}`] || 0;
+                            heatmapData[key] = count;
+                        }
+                    }
+                    updateHeatmapData();
+                }
+                
+                // Load person type counts
+                const personData = await FirestoreService.getPersonTypeCounts();
+                if (personData) {
+                    personTypeCounts = {
+                        'Adult': personData.Adult || 0,
+                        'Child': personData.Child || 0,
+                        'No Person': personData['No Person'] || 0
+                    };
+                    updatePersonDonutChart();
+                }
+                
+                console.log('✅ Firestore data loaded successfully');
+            } catch (error) {
+                console.error('❌ Error loading Firestore data:', error);
+            }
+        }
+
+        // MQTT Connection
+        function initializeMQTT() {
+            const connectUrl = `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`;
+            console.log('Attempting to connect to MQTT broker:', connectUrl);
+            
+            mqttClient = mqtt.connect(connectUrl, {
+                clientId: MQTT_CONFIG.clientId,
+                username: MQTT_CONFIG.username,
+                password: MQTT_CONFIG.password,
+                clean: true,
+                reconnectPeriod: 1000,
+                connectTimeout: 30 * 1000,
+                keepalive: 60
+            });
+
+            mqttClient.on('connect', function() {
+                console.log('✅ Successfully connected to MQTT broker');
+                updateMQTTStatus(true);
+                
+                // Subscribe to both topics
+                mqttClient.subscribe('student/ucbqmie/sitting_events');
+                mqttClient.subscribe('student/ucbqmie/seat_counts');
+            });
+
+            mqttClient.on('message', function(topic, message) {
+                try {
+                    const data = JSON.parse(message.toString());
+                    console.log('Received MQTT data from topic:', topic, data);
+                    
+                    if (topic === 'student/ucbqmie/sitting_events') {
+                        if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
+                            updateSeatData(data.seat_id.toString(), data);
+                        }
+                    } else if (topic === 'student/ucbqmie/seat_counts') {
+                        handleSeatCounts(data);
+                    }
+                } catch (error) {
+                    console.error('Error parsing MQTT message:', error);
+                }
+            });
+
+            mqttClient.on('error', function(error) {
+                console.error('❌ MQTT Error:', error);
+                updateMQTTStatus(false);
+            });
+
+            mqttClient.on('close', function() {
+                console.log('🔌 MQTT connection closed');
+                updateMQTTStatus(false);
+            });
+        }
+
+        function updateMQTTStatus(connected) {
+            const statusEl = document.getElementById('mqtt-status');
+            if (connected) {
+                statusEl.textContent = 'MQTT: Connected';
+                statusEl.className = 'mqtt-status mqtt-connected';
+            } else {
+                statusEl.textContent = 'MQTT: Disconnected';
+                statusEl.className = 'mqtt-status mqtt-disconnected';
+            }
+        }
+
+        function updateSeatData(seatId, data) {
+            seatData[seatId] = data;
+            
+            // Update Seat 4 specific data
+            if (seatId === '4') {
+                const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+                
+                document.getElementById('seat4-count').textContent = data.count;
+                document.getElementById('seat4-duration').textContent = sessionDurationMinutes;
+                document.getElementById('seat4-resistance').textContent = data.average_resistance.toFixed(2);
+                
+                // Update person type donut chart
+                updatePersonDonutChart(data.person_type);
+                
+                document.getElementById('seat4-start').textContent = data.session_start_datetime;
+                document.getElementById('seat4-end').textContent = data.session_end_datetime;
+                document.getElementById('seat4-session-duration').textContent = `${sessionDurationMinutes} min`;
+                document.getElementById('seat4-last-update').textContent = new Date().toLocaleTimeString();
+                
+                // Update heatmap for this session
+                updateHeatmapForSession(seatId, data.session_start_datetime, data.session_end_datetime);
+                
+                // Save session data to Firestore
+                if (firestoreEnabled) {
+                    saveSessionToFirestore(seatId, data);
+                }
+            }
+            
+            // Update comparison chart
+            updateComparisonChart();
+        }
+
+        function handleSeatCounts(data) {
+            if (data && data.seat_id && data.count !== undefined) {
+                const seatId = data.seat_id;
+                if (seatId >= 1 && seatId <= 5) {
+                    if (!seatData[seatId.toString()]) {
+                        seatData[seatId.toString()] = {};
+                    }
+                    seatData[seatId.toString()].count = data.count;
+                    
+                    // Update Seat 4 count display if it's seat 1
+                    if (seatId === 4) {
+                        document.getElementById('seat4-count').textContent = data.count;
+                    }
+                    
+                    updateComparisonChart();
+                }
+            }
+        }
+
+        function createComparisonChart() {
+            const ctx = document.getElementById('comparison-chart').getContext('2d');
+            comparisonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Seat 4', 'Seat 2', 'Seat 3', 'Seat 4', 'Seat 5'],
+                    datasets: [{
+                        label: 'Live Count',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(138, 43, 226, 0.8)',
+                            'rgba(255, 20, 147, 0.8)',
+                            'rgba(30, 144, 255, 0.8)',
+                            'rgba(0, 206, 209, 0.8)',
+                            'rgba(255, 215, 0, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(138, 43, 226, 1)',
+                            'rgba(255, 20, 147, 1)',
+                            'rgba(30, 144, 255, 1)',
+                            'rgba(0, 206, 209, 1)',
+                            'rgba(255, 215, 0, 1)'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#fff',
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            });
+        }
+
+        function createPersonDonutChart() {
+            const ctx = document.getElementById('person-donut-chart-4').getContext('2d');
+            personDonutChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Adult', 'Child', 'No Person'],
+                    datasets: [{
+                        data: [0, 0, 0], // Start with all zeros
+                        backgroundColor: [
+                            'rgba(138, 43, 226, 0.8)',
+                            'rgba(255, 20, 147, 0.8)',
+                            'rgba(128, 128, 128, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(138, 43, 226, 1)',
+                            'rgba(255, 20, 147, 1)',
+                            'rgba(128, 128, 128, 1)'
+                        ],
+                        borderWidth: 2,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                },
+                                padding: 15,
+                                usePointStyle: true,
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    if (data.labels.length && data.datasets.length) {
+                                        return data.labels.map((label, i) => {
+                                            const value = data.datasets[0].data[i];
+                                            return {
+                                                text: `${label}: ${value}`,
+                                                fillStyle: data.datasets[0].backgroundColor[i],
+                                                strokeStyle: data.datasets[0].borderColor[i],
+                                                lineWidth: 2,
+                                                pointStyle: 'circle',
+                                                hidden: false,
+                                                index: i
+                                            };
+                                        });
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updatePersonDonutChart(personType) {
+            if (!personDonutChart) return;
+            
+            // Increment the count for the person type
+            if (personType === 'Adult') {
+                personTypeCounts['Adult']++;
+            } else if (personType === 'Child') {
+                personTypeCounts['Child']++;
+            } else {
+                personTypeCounts['No Person']++;
+            }
+            
+            // Update chart with cumulative counts
+            const newData = [
+                personTypeCounts['Adult'],
+                personTypeCounts['Child'],
+                personTypeCounts['No Person']
+            ];
+            
+            personDonutChart.data.datasets[0].data = newData;
+            personDonutChart.update('active');
+        }
+
+        function createUsageHeatmap() {
+            const ctx = document.getElementById('usage-heatmap').getContext('2d');
+            
+            // Generate time labels from 10:00 to 18:00
+            const timeLabels = [];
+            for (let hour = 10; hour <= 18; hour++) {
+                timeLabels.push(`${hour.toString().padStart(2, '0')}:00`);
+            }
+            
+            // Initialize heatmap data
+            const heatmapDataset = [];
+            for (let seat = 1; seat <= 5; seat++) {
+                const row = [];
+                for (let hour = 10; hour <= 18; hour++) {
+                    row.push(0);
+                }
+                heatmapDataset.push(row);
+            }
+            
+            usageHeatmap = new Chart(ctx, {
+                type: 'matrix',
+                data: {
+                    datasets: [{
+                        label: 'Usage Count',
+                        data: [],
+                        backgroundColor: function(context) {
+                            const value = context.dataset.data[context.dataIndex]?.v || 0;
+                            const maxValue = Math.max(...context.dataset.data.map(d => d.v || 0));
+                            const intensity = maxValue > 0 ? value / maxValue : 0;
+                            return `rgba(138, 43, 226, ${0.3 + intensity * 0.7})`;
+                        },
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                        borderWidth: 1,
+                        width: ({ chart }) => (chart.chartArea || {}).width / 9 - 1,
+                        height: ({ chart }) => (chart.chartArea || {}).height / 5 - 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeInOutQuart'
+                    },
+                    scales: {
+                        x: {
+                            type: 'category',
+                            labels: timeLabels,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        y: {
+                            type: 'category',
+                            labels: ['Seat 4', 'Seat 2', 'Seat 3', 'Seat 4', 'Seat 5'],
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#fff',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            callbacks: {
+                                title: function(context) {
+                                    return `Seat ${context[0].dataIndex.y + 1} at ${context[0].dataIndex.x + 10}:00`;
+                                },
+                                label: function(context) {
+                                    const value = context.parsed.v || 0;
+                                    return `Usage Count: ${value}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            updateHeatmapData();
+        }
+
+        function updateHeatmapData() {
+            if (!usageHeatmap) return;
+            
+            const data = [];
+            for (let seat = 1; seat <= 5; seat++) {
+                for (let hour = 10; hour <= 18; hour++) {
+                    const key = `${seat}-${hour}`;
+                    const count = heatmapData[key] || 0;
+                    data.push({
+                        x: hour - 10,
+                        y: seat - 1,
+                        v: count
+                    });
+                }
+            }
+            
+            usageHeatmap.data.datasets[0].data = data;
+            usageHeatmap.update('active');
+        }
+
+        function checkDailyReset() {
+            const today = new Date().toDateString();
+            if (currentDate !== today) {
+                // New day, reset heatmap data
+                heatmapData = {};
+                currentDate = today;
+                updateHeatmapData();
+                console.log('🔄 Daily heatmap data reset');
+            }
+        }
+
+        // Save session data to Firestore
+        async function saveSessionToFirestore(seatId, data) {
+            if (!firestoreEnabled) return;
+            
+            try {
+                // Save session data
+                await FirestoreService.saveSession({
+                    seat_id: parseInt(seatId),
+                    count: data.count,
+                    session_duration_ms: data.session_duration_ms,
+                    session_start_datetime: data.session_start_datetime,
+                    session_end_datetime: data.session_end_datetime,
+                    average_resistance: data.average_resistance,
+                    person_type: data.person_type
+                });
+                
+                // Update seat statistics
+                await FirestoreService.updateSeatStats(seatId, {
+                    total_count: data.count,
+                    total_duration: data.session_duration_ms,
+                    average_resistance: data.average_resistance,
+                    last_session: data.session_end_datetime
+                });
+                
+                // Update person type counts
+                await FirestoreService.updatePersonTypeCounts(personTypeCounts);
+                
+                console.log(`✅ Session data saved to Firestore for seat ${seatId}`);
+            } catch (error) {
+                console.error(`❌ Error saving session data to Firestore:`, error);
+            }
+        }
+
+        function updateHeatmapForSession(seatId, sessionStart, sessionEnd) {
+            const startDate = new Date(sessionStart);
+            const endDate = new Date(sessionEnd);
+            
+            // Check if session is today
+            const today = new Date().toDateString();
+            if (startDate.toDateString() !== today) return;
+            
+            // Get hours for the session
+            const startHour = startDate.getHours();
+            const endHour = endDate.getHours();
+            
+            // Update heatmap data for each hour the session spans
+            for (let hour = Math.max(10, startHour); hour <= Math.min(18, endHour); hour++) {
+                const key = `${seatId}-${hour}`;
+                if (!heatmapData[key]) heatmapData[key] = 0;
+                heatmapData[key]++;
+                
+                // Save to Firestore
+                if (firestoreEnabled) {
+                    FirestoreService.updateDailyUsage(seatId, hour, heatmapData[key]);
+                }
+            }
+            
+            updateHeatmapData();
+        }
+
+        function updateComparisonChart() {
+            if (!comparisonChart) return;
+            
+            const countData = [];
+            for (let i = 1; i <= 5; i++) {
+                const seatId = i.toString();
+                const data = seatData[seatId];
+                countData.push(data && data.count ? data.count : 0);
+            }
+            
+            comparisonChart.data.datasets[0].data = countData;
+            comparisonChart.update('active');
+        }
+    </script>
+</body>
+</html> 
