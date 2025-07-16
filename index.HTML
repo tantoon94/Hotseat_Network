@@ -15,6 +15,10 @@
     <!-- MQTT.js for real-time data -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -680,6 +684,9 @@
                         if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
                             console.log('Processing sitting event for seat:', data.seat_id);
                             updateSeatData(data.seat_id.toString(), data);
+                            
+                            // Also call the enhanced handler for Firestore integration
+                            handleSittingEvents(data);
                         }
                     } else if (topic === 'student/ucbqmie/seat_counts') {
                         // Handle seat counts data with exact format
@@ -732,26 +739,36 @@
                     count: Math.floor(Math.random() * 50) + 10,
                     session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
                     session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
-                    session_duration_ms: Math.floor(Math.random() * 300000) + 60000,
+                    session_duration_ms: Math.floor(Math.random() * 1800000) + 300000, // 5-35 minutes in milliseconds
                     average_resistance: Math.random() * 50 + 10,
                     person_type: Math.random() > 0.5 ? "Adult" : "Child"
                 };
                 updateSeatData(i.toString(), mockData);
+                
+                // Also save to Firestore if available
+                if (firebaseInitialized && typeof handleSittingEvents === 'function') {
+                    handleSittingEvents(mockData);
+                }
             }
 
             // Simulate real-time updates
             setInterval(() => {
                 for (let i = 1; i <= 5; i++) {
-            const mockData = {
+                    const mockData = {
                         seat_id: i,
                         count: Math.floor(Math.random() * 50) + 10,
                         session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
                         session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
-                        session_duration_ms: Math.floor(Math.random() * 300000) + 60000,
+                        session_duration_ms: Math.floor(Math.random() * 1800000) + 300000, // 5-35 minutes in milliseconds
                         average_resistance: Math.random() * 50 + 10,
                         person_type: Math.random() > 0.5 ? "Adult" : "Child"
                     };
                     updateSeatData(i.toString(), mockData);
+                    
+                    // Also save to Firestore if available
+                    if (firebaseInitialized && typeof handleSittingEvents === 'function') {
+                        handleSittingEvents(mockData);
+                    }
                 }
             }, 5000);
         }
@@ -892,18 +909,22 @@
         function updateSeatData(seatId, data) {
             seatData[seatId] = data;
             
-            // Calculate session duration in minutes
-            const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+            // Calculate session duration in HH:MM:SS format
+            const sessionDurationMs = data.session_duration_ms || 0;
+            const hours = Math.floor(sessionDurationMs / 3600000);
+            const minutes = Math.floor((sessionDurationMs % 3600000) / 60000);
+            const seconds = Math.floor((sessionDurationMs % 60000) / 1000);
+            const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             
             // Update main dashboard with actual sensor data
             document.getElementById(`seat${seatId}-count`).textContent = data.count;
-            document.getElementById(`seat${seatId}-duration`).textContent = sessionDurationMinutes;
+            document.getElementById(`seat${seatId}-duration`).textContent = formattedDuration;
             document.getElementById(`seat${seatId}-resistance`).textContent = data.average_resistance.toFixed(2);
             document.getElementById(`seat${seatId}-person`).textContent = data.person_type;
             
             // Update session info
             document.getElementById(`seat${seatId}-last-session`).textContent = data.session_end_datetime;
-            document.getElementById(`seat${seatId}-session-duration`).textContent = `${sessionDurationMinutes} min`;
+            document.getElementById(`seat${seatId}-session-duration`).textContent = formattedDuration;
 
             // Update AR dashboard if this seat is currently displayed
             if (currentARSeat === seatId) {
@@ -915,9 +936,15 @@
         }
 
         function updateARDashboard(data) {
-            const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+            // Calculate session duration in HH:MM:SS format
+            const sessionDurationMs = data.session_duration_ms || 0;
+            const hours = Math.floor(sessionDurationMs / 3600000);
+            const minutes = Math.floor((sessionDurationMs % 3600000) / 60000);
+            const seconds = Math.floor((sessionDurationMs % 60000) / 1000);
+            const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
             document.getElementById('ar-occupancy').setAttribute('value', `Count: ${data.count}`);
-            document.getElementById('ar-session').setAttribute('value', `Session: ${sessionDurationMinutes}min`);
+            document.getElementById('ar-session').setAttribute('value', `Session: ${formattedDuration}`);
             document.getElementById('ar-count').setAttribute('value', `Resistance: ${data.average_resistance.toFixed(2)}Ω`);
             document.getElementById('ar-avg-time').setAttribute('value', `Type: ${data.person_type}`);
         }
@@ -1133,6 +1160,14 @@
                     // Update charts immediately for live updates
                     updateCharts();
                     
+                    // Save count data to Firestore if available
+                    if (firebaseInitialized && typeof FirestoreService !== 'undefined') {
+                        console.log('🔥 Saving count data to Firestore...');
+                        FirestoreService.updateSeatData(seatId, data, 'count').catch(error => {
+                            console.error('❌ Error saving count to Firestore:', error);
+                        });
+                    }
+                    
                     console.log(`Updated seat ${seatId} count to ${data.count}`);
                 }
             }
@@ -1140,7 +1175,103 @@
 
         // Expose QR handling function globally for AR integration
         window.handleQRCode = handleQRCode;
+        
+        // Firebase configuration
+        let firebaseInitialized = false;
+        
+        // Load Firebase configuration
+        async function loadFirebaseConfig() {
+            try {
+                const response = await fetch('firebase-config.js');
+                if (response.ok) {
+                    // Create a script element to load the Firebase config
+                    const script = document.createElement('script');
+                    script.src = 'firebase-config.js';
+                    script.onload = () => {
+                        console.log('✅ Firebase configuration loaded');
+                        firebaseInitialized = true;
+                        initializeFirebase();
+                    };
+                    script.onerror = () => {
+                        console.warn('⚠️ Could not load Firebase configuration');
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    console.warn('⚠️ Firebase configuration file not found');
+                }
+            } catch (error) {
+                console.warn('⚠️ Error loading Firebase configuration:', error);
+            }
+        }
+        
+        // Initialize Firebase
+        function initializeFirebase() {
+            if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+                console.log('✅ Firebase Firestore initialized successfully');
+                firebaseInitialized = true;
+            } else {
+                console.warn('⚠️ Firebase not configured. Firestore features will be disabled.');
+            }
+        }
+        
+        // Enhanced MQTT message handling with database integration
+        function handleSittingEvents(data) {
+            console.log('Processing sitting events data:', data);
+            
+            if (data && data.seat_id && data.count !== undefined) {
+                const seatId = data.seat_id;
+                if (seatId >= 1 && seatId <= 5) {
+                    // Update local data
+                    if (!seatData[seatId.toString()]) {
+                        seatData[seatId.toString()] = {};
+                    }
+                    
+                    // Update seat data with all available information
+                    seatData[seatId.toString()] = {
+                        ...seatData[seatId.toString()],
+                        count: data.count,
+                        session_start: data.session_start || null,
+                        session_end: data.session_end || null,
+                        average_resistance: data.average_resistance || 0,
+                        person_type: data.person_type || 'Unknown'
+                    };
+                    
+                    // Update UI
+                    updateSeatData(seatId.toString(), data);
+                    updateCharts();
+                    
+                    // Save to Firestore if available
+                    if (firebaseInitialized && typeof FirestoreService !== 'undefined') {
+                        console.log('🔥 Attempting to save to Firestore...');
+                        saveToFirestore(data);
+                    } else {
+                        console.log('⚠️ Firestore not available - firebaseInitialized:', firebaseInitialized, 'FirestoreService:', typeof FirestoreService);
+                    }
+                    
+                    console.log(`Updated seat ${seatId} with complete data`);
+                }
+            }
+        }
+        
+        // Save data to Firestore
+        async function saveToFirestore(data) {
+            try {
+                console.log('🔥 Starting Firestore save for seat:', data.seat_id);
+                const seatId = data.seat_id;
+                
+                // Save session data to the simplified database
+                await FirestoreService.updateSeatData(seatId, data, 'session');
+                
+                console.log('✅ Session data saved to Firestore successfully');
+            } catch (error) {
+                console.error('❌ Error saving to Firestore:', error);
+            }
+        }
+        
+        // Load Firebase configuration when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFirebaseConfig();
+        });
     </script>
 </body>
-</html>
 </html>

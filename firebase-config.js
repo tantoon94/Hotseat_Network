@@ -17,170 +17,300 @@ firebase.initializeApp(firebaseConfig);
 // Initialize Firestore
 const db = firebase.firestore();
 
-// Firestore collections
-const COLLECTIONS = {
-    SESSIONS: 'sessions',
-    SEAT_STATS: 'seat_stats',
-    DAILY_USAGE: 'daily_usage',
-    PERSON_TYPES: 'person_types'
-};
+// Simplified Firestore collection
+const COLLECTION_NAME = 'seats';
 
 // Firestore service functions
 class FirestoreService {
     
-    // Save session data
-    static async saveSession(sessionData) {
+    // Update seat data with both count and session information
+    static async updateSeatData(seatId, data, dataType) {
         try {
-            const sessionRef = await db.collection(COLLECTIONS.SESSIONS).add({
-                ...sessionData,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                date: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+            const seatRef = db.collection(COLLECTION_NAME).doc(`seat_${seatId}`);
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            const currentHour = new Date().getHours();
+            
+            if (dataType === 'count') {
+                // Update daily count data
+                await seatRef.set({
+                    seat_id: seatId,
+                    daily_counts: {
+                        [today]: data.count
+                    },
+                    last_count_update: firebase.firestore.FieldValue.serverTimestamp(),
+                    last_count: data.count
+                }, { merge: true });
+                
+                console.log(`✅ Seat ${seatId} count updated: ${data.count}`);
+                
+            } else if (dataType === 'session') {
+                // Update session data and hourly usage for heatmap
+                const sessionData = {
+                    seat_id: seatId,
+                    current_session: {
+                        count: data.count,
+                        session_start_datetime: data.session_start_datetime,
+                        session_end_datetime: data.session_end_datetime,
+                        session_duration_ms: data.session_duration_ms,
+                        average_resistance: data.average_resistance,
+                        person_type: data.person_type
+                    },
+                    last_session_update: firebase.firestore.FieldValue.serverTimestamp(),
+                    session_history: firebase.firestore.FieldValue.arrayUnion({
+                        count: data.count,
+                        session_start_datetime: data.session_start_datetime,
+                        session_end_datetime: data.session_end_datetime,
+                        session_duration_ms: data.session_duration_ms,
+                        average_resistance: data.average_resistance,
+                        person_type: data.person_type,
+                        timestamp: new Date().toISOString()
+                    })
+                };
+                
+                // Add hourly usage for heatmap
+                const hourlyUsageData = {
+                    [`hourly_usage.${today}.${currentHour}`]: firebase.firestore.FieldValue.increment(1)
+                };
+                
+                await seatRef.set({
+                    ...sessionData,
+                    ...hourlyUsageData
+                }, { merge: true });
+                
+                console.log(`✅ Seat ${seatId} session data and hourly usage updated`);
+            }
+            
+        } catch (error) {
+            console.error(`❌ Error updating seat ${seatId} data:`, error);
+            throw error;
+        }
+    }
+    
+    // Get all seats data
+    static async getAllSeatsData() {
+        try {
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const seatsData = {};
+            
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                seatsData[seatId] = data;
             });
-            console.log('✅ Session saved to Firestore:', sessionRef.id);
-            return sessionRef.id;
+            
+            return seatsData;
         } catch (error) {
-            console.error('❌ Error saving session to Firestore:', error);
+            console.error('❌ Error getting all seats data:', error);
             throw error;
         }
     }
     
-    // Update seat statistics
-    static async updateSeatStats(seatId, stats) {
+    // Get specific seat data
+    static async getSeatData(seatId) {
         try {
-            const seatRef = db.collection(COLLECTIONS.SEAT_STATS).doc(`seat_${seatId}`);
-            await seatRef.set({
-                seat_id: seatId,
-                ...stats,
-                last_updated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            console.log(`✅ Seat ${seatId} stats updated in Firestore`);
-        } catch (error) {
-            console.error(`❌ Error updating seat ${seatId} stats:`, error);
-            throw error;
-        }
-    }
-    
-    // Update daily usage heatmap data
-    static async updateDailyUsage(seatId, hour, count) {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const usageRef = db.collection(COLLECTIONS.DAILY_USAGE).doc(today);
-            
-            await usageRef.set({
-                date: today,
-                [`seat_${seatId}.hour_${hour}`]: count,
-                last_updated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            
-            console.log(`✅ Daily usage updated for seat ${seatId} at hour ${hour}`);
-        } catch (error) {
-            console.error(`❌ Error updating daily usage:`, error);
-            throw error;
-        }
-    }
-    
-    // Update person type counts
-    static async updatePersonTypeCounts(counts) {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const personRef = db.collection(COLLECTIONS.PERSON_TYPES).doc(today);
-            
-            await personRef.set({
-                date: today,
-                ...counts,
-                last_updated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-            
-            console.log('✅ Person type counts updated in Firestore');
-        } catch (error) {
-            console.error('❌ Error updating person type counts:', error);
-            throw error;
-        }
-    }
-    
-    // Get today's usage data
-    static async getTodayUsage() {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const usageDoc = await db.collection(COLLECTIONS.DAILY_USAGE).doc(today).get();
-            
-            if (usageDoc.exists) {
-                return usageDoc.data();
-            }
-            return null;
-        } catch (error) {
-            console.error('❌ Error getting today\'s usage:', error);
-            throw error;
-        }
-    }
-    
-    // Get person type counts for today
-    static async getPersonTypeCounts() {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-            const personDoc = await db.collection(COLLECTIONS.PERSON_TYPES).doc(today).get();
-            
-            if (personDoc.exists) {
-                return personDoc.data();
-            }
-            return null;
-        } catch (error) {
-            console.error('❌ Error getting person type counts:', error);
-            throw error;
-        }
-    }
-    
-    // Get seat statistics
-    static async getSeatStats(seatId) {
-        try {
-            const seatDoc = await db.collection(COLLECTIONS.SEAT_STATS).doc(`seat_${seatId}`).get();
+            const seatDoc = await db.collection(COLLECTION_NAME).doc(`seat_${seatId}`).get();
             
             if (seatDoc.exists) {
                 return seatDoc.data();
             }
             return null;
         } catch (error) {
-            console.error(`❌ Error getting seat ${seatId} stats:`, error);
+            console.error(`❌ Error getting seat ${seatId} data:`, error);
             throw error;
         }
     }
     
-    // Get recent sessions (last 24 hours)
-    static async getRecentSessions(limit = 50) {
+    // Get today's counts for all seats
+    static async getTodayCounts() {
         try {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
+            const today = new Date().toISOString().split('T')[0];
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const todayCounts = {};
             
-            const sessionsSnapshot = await db.collection(COLLECTIONS.SESSIONS)
-                .where('timestamp', '>=', yesterday)
-                .orderBy('timestamp', 'desc')
-                .limit(limit)
-                .get();
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                if (data.daily_counts && data.daily_counts[today]) {
+                    todayCounts[seatId] = data.daily_counts[today];
+                } else {
+                    todayCounts[seatId] = 0;
+                }
+            });
             
-            return sessionsSnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            return todayCounts;
         } catch (error) {
-            console.error('❌ Error getting recent sessions:', error);
+            console.error('❌ Error getting today\'s counts:', error);
             throw error;
         }
     }
     
-    // Get analytics data for a date range
+    // Get session history for a seat (last 10 sessions)
+    static async getSeatSessionHistory(seatId, limit = 10) {
+        try {
+            const seatData = await this.getSeatData(seatId);
+            if (seatData && seatData.session_history) {
+                return seatData.session_history.slice(-limit);
+            }
+            return [];
+        } catch (error) {
+            console.error(`❌ Error getting seat ${seatId} session history:`, error);
+            throw error;
+        }
+    }
+    
+    // Get current session data for all seats
+    static async getCurrentSessions() {
+        try {
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const currentSessions = {};
+            
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                if (data.current_session) {
+                    currentSessions[seatId] = data.current_session;
+                }
+            });
+            
+            return currentSessions;
+        } catch (error) {
+            console.error('❌ Error getting current sessions:', error);
+            throw error;
+        }
+    }
+    
+    // Get heatmap data for today (10:00 to 18:00)
+    static async getTodayHeatmapData() {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const heatmapData = {};
+            
+            // Initialize heatmap structure
+            for (let seatId = 1; seatId <= 5; seatId++) {
+                heatmapData[seatId] = {};
+                for (let hour = 10; hour <= 18; hour++) {
+                    heatmapData[seatId][hour] = 0;
+                }
+            }
+            
+            // Fill in actual data from Firestore
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                
+                if (data.hourly_usage && data.hourly_usage[today]) {
+                    Object.keys(data.hourly_usage[today]).forEach(hour => {
+                        const hourNum = parseInt(hour);
+                        if (hourNum >= 10 && hourNum <= 18) {
+                            heatmapData[seatId][hourNum] = data.hourly_usage[today][hour];
+                        }
+                    });
+                }
+            });
+            
+            return heatmapData;
+        } catch (error) {
+            console.error('❌ Error getting heatmap data:', error);
+            throw error;
+        }
+    }
+    
+    // Get heatmap data for a specific date
+    static async getHeatmapDataForDate(date) {
+        try {
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const heatmapData = {};
+            
+            // Initialize heatmap structure
+            for (let seatId = 1; seatId <= 5; seatId++) {
+                heatmapData[seatId] = {};
+                for (let hour = 10; hour <= 18; hour++) {
+                    heatmapData[seatId][hour] = 0;
+                }
+            }
+            
+            // Fill in actual data from Firestore
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                
+                if (data.hourly_usage && data.hourly_usage[date]) {
+                    Object.keys(data.hourly_usage[date]).forEach(hour => {
+                        const hourNum = parseInt(hour);
+                        if (hourNum >= 10 && hourNum <= 18) {
+                            heatmapData[seatId][hourNum] = data.hourly_usage[date][hour];
+                        }
+                    });
+                }
+            });
+            
+            return heatmapData;
+        } catch (error) {
+            console.error('❌ Error getting heatmap data for date:', error);
+            throw error;
+        }
+    }
+    
+    // Clear old session history (keep only last 50 sessions)
+    static async cleanupSessionHistory(seatId) {
+        try {
+            const seatData = await this.getSeatData(seatId);
+            if (seatData && seatData.session_history && seatData.session_history.length > 50) {
+                const recentSessions = seatData.session_history.slice(-50);
+                await db.collection(COLLECTION_NAME).doc(`seat_${seatId}`).update({
+                    session_history: recentSessions
+                });
+                console.log(`✅ Cleaned up session history for seat ${seatId}`);
+            }
+        } catch (error) {
+            console.error(`❌ Error cleaning up session history for seat ${seatId}:`, error);
+        }
+    }
+    
+    // Get analytics data for date range
     static async getAnalytics(startDate, endDate) {
         try {
-            const sessionsSnapshot = await db.collection(COLLECTIONS.SESSIONS)
-                .where('date', '>=', startDate)
-                .where('date', '<=', endDate)
-                .get();
+            console.log(`📊 Fetching analytics data from ${startDate} to ${endDate}`);
             
-            return sessionsSnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const snapshot = await db.collection(COLLECTION_NAME).get();
+            const allSessions = [];
+            
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const seatId = data.seat_id;
+                
+                // Process session history if it exists
+                if (data.session_history && Array.isArray(data.session_history)) {
+                    data.session_history.forEach(session => {
+                        // Extract date from session timestamp
+                        let sessionDate;
+                        if (session.timestamp) {
+                            sessionDate = new Date(session.timestamp).toISOString().split('T')[0];
+                        } else if (session.session_start_datetime) {
+                            sessionDate = new Date(session.session_start_datetime).toISOString().split('T')[0];
+                        } else {
+                            // Fallback to today if no timestamp
+                            sessionDate = new Date().toISOString().split('T')[0];
+                        }
+                        
+                        // Check if session is within date range
+                        if (sessionDate >= startDate && sessionDate <= endDate) {
+                            allSessions.push({
+                                ...session,
+                                seat_id: seatId,
+                                date: sessionDate
+                            });
+                        }
+                    });
+                }
+            });
+            
+            console.log(`✅ Found ${allSessions.length} sessions in date range`);
+            return allSessions;
+            
         } catch (error) {
-            console.error('❌ Error getting analytics:', error);
+            console.error('❌ Error getting analytics data:', error);
             throw error;
         }
     }
@@ -188,4 +318,4 @@ class FirestoreService {
 
 // Export for use in other files
 window.FirestoreService = FirestoreService;
-window.COLLECTIONS = COLLECTIONS; 
+window.COLLECTION_NAME = COLLECTION_NAME; 

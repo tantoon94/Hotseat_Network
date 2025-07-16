@@ -929,8 +929,8 @@
             if (!firestoreEnabled) return;
             
             try {
-                // Save session data
-                await FirestoreService.saveSession({
+                // Save session data using the new simplified structure
+                await FirestoreService.updateSeatData(parseInt(seatId), {
                     seat_id: parseInt(seatId),
                     count: data.count,
                     session_duration_ms: data.session_duration_ms,
@@ -938,18 +938,7 @@
                     session_end_datetime: data.session_end_datetime,
                     average_resistance: data.average_resistance,
                     person_type: data.person_type
-                });
-                
-                // Update seat statistics
-                await FirestoreService.updateSeatStats(seatId, {
-                    total_count: data.count,
-                    total_duration: data.session_duration_ms,
-                    average_resistance: data.average_resistance,
-                    last_session: data.session_end_datetime
-                });
-                
-                // Update person type counts
-                await FirestoreService.updatePersonTypeCounts(personTypeCounts);
+                }, 'session');
                 
                 console.log(`✅ Session data saved to Firestore for seat ${seatId}`);
             } catch (error) {

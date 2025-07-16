@@ -563,10 +563,15 @@
             
             // Update Seat 1 specific data
             if (seatId === '1') {
-                const sessionDurationMinutes = Math.round(data.session_duration_ms / 60000);
+                // Calculate session duration in HH:MM:SS format
+                const sessionDurationMs = data.session_duration_ms || 0;
+                const hours = Math.floor(sessionDurationMs / 3600000);
+                const minutes = Math.floor((sessionDurationMs % 3600000) / 60000);
+                const seconds = Math.floor((sessionDurationMs % 60000) / 1000);
+                const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                 
                 document.getElementById('seat1-count').textContent = data.count;
-                document.getElementById('seat1-duration').textContent = sessionDurationMinutes;
+                document.getElementById('seat1-duration').textContent = formattedDuration;
                 document.getElementById('seat1-resistance').textContent = data.average_resistance.toFixed(2);
                 
                 // Update person type donut chart
@@ -574,7 +579,7 @@
                 
                 document.getElementById('seat1-start').textContent = data.session_start_datetime;
                 document.getElementById('seat1-end').textContent = data.session_end_datetime;
-                document.getElementById('seat1-session-duration').textContent = `${sessionDurationMinutes} min`;
+                document.getElementById('seat1-session-duration').textContent = formattedDuration;
                 document.getElementById('seat1-last-update').textContent = new Date().toLocaleTimeString();
                 
                 // Update heatmap for this session
@@ -929,8 +934,8 @@
             if (!firestoreEnabled) return;
             
             try {
-                // Save session data
-                await FirestoreService.saveSession({
+                // Save session data using the new simplified structure
+                await FirestoreService.updateSeatData(parseInt(seatId), {
                     seat_id: parseInt(seatId),
                     count: data.count,
                     session_duration_ms: data.session_duration_ms,
@@ -938,18 +943,7 @@
                     session_end_datetime: data.session_end_datetime,
                     average_resistance: data.average_resistance,
                     person_type: data.person_type
-                });
-                
-                // Update seat statistics
-                await FirestoreService.updateSeatStats(seatId, {
-                    total_count: data.count,
-                    total_duration: data.session_duration_ms,
-                    average_resistance: data.average_resistance,
-                    last_session: data.session_end_datetime
-                });
-                
-                // Update person type counts
-                await FirestoreService.updatePersonTypeCounts(personTypeCounts);
+                }, 'session');
                 
                 console.log(`✅ Session data saved to Firestore for seat ${seatId}`);
             } catch (error) {
