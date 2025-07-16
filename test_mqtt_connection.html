@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Connection Test</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #2d5a2d; }
+        .disconnected { background: #5a2d2d; }
+        .error { background: #5a2d2d; color: #ff6b6b; }
+        .log { background: #2d2d5a; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>MQTT Connection Test</h1>
+    <div id="status" class="status disconnected">Status: Testing...</div>
+    <div id="log" class="log"></div>
+    
+    <script>
+        const MQTT_CONFIG = {
+            host: "mqtt.cetools.org",
+            port: 8090,
+            username: "student",
+            password: "ce2021-mqtt-forget-whale",
+            protocol: "ws"
+        };
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            console.log(message);
+        }
+        
+        function updateStatus(message, isConnected) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = `Status: ${message}`;
+            statusDiv.className = `status ${isConnected ? 'connected' : 'disconnected'}`;
+        }
+        
+        log('Starting MQTT connection test...');
+        log(`Host: ${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`);
+        
+        // Test different connection URLs
+        const testUrls = [
+            `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+            `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+            `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+            `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`
+        ];
+        
+        let currentTest = 0;
+        
+        function testConnection() {
+            if (currentTest >= testUrls.length) {
+                log('❌ All connection attempts failed');
+                updateStatus('All connections failed', false);
+                return;
+            }
+            
+            const url = testUrls[currentTest];
+            log(`Testing URL ${currentTest + 1}/${testUrls.length}: ${url}`);
+            
+            try {
+                const client = mqtt.connect(url, {
+                    username: MQTT_CONFIG.username,
+                    password: MQTT_CONFIG.password,
+                    clean: true,
+                    connectTimeout: 10000,
+                    keepalive: 60
+                });
+                
+                client.on('connect', function() {
+                    log(`✅ SUCCESS: Connected to ${url}`);
+                    updateStatus(`Connected via ${url}`, true);
+                    client.end();
+                });
+                
+                client.on('error', function(error) {
+                    log(`❌ Error with ${url}: ${error.message}`);
+                    currentTest++;
+                    setTimeout(testConnection, 1000);
+                });
+                
+                client.on('close', function() {
+                    log(`🔌 Connection closed: ${url}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Exception with ${url}: ${error.message}`);
+                currentTest++;
+                setTimeout(testConnection, 1000);
+            }
+        }
+        
+        // Start testing
+        testConnection();
+    </script>
+</body>
+</html> 
