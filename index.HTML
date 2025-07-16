@@ -625,15 +625,8 @@
                 const isHTTPS = window.location.protocol === 'https:';
                 
                 if (isGitHubPages || isHTTPS) {
-                    console.log('🌐 Detected GitHub Pages or HTTPS - MQTT connection may be restricted');
-                    console.log('📱 Using demo data mode for live dashboard');
-                    
-                    // Show user-friendly message
-                    updateMQTTStatus(false, 'Demo Mode (GitHub Pages)');
-                    
-                    // Start demo data immediately
-                    simulateMQTTData();
-                    return;
+                    console.log('🌐 Detected GitHub Pages or HTTPS - attempting secure MQTT connection');
+                    console.log('🔒 Will try WSS connections first for compatibility');
                 }
                 
                 // Load MQTT configuration
@@ -645,11 +638,13 @@
                 const MQTT_CONFIG = await response.json();
                 console.log('📡 MQTT Config loaded:', MQTT_CONFIG);
                 
-                // Try different connection URLs with fallbacks
+                // Try different connection URLs with fallbacks (secure first)
                 const connectUrls = [
-                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
-                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
-                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`,
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+                    `ws://${MQTT_CONFIG.host}:8090/mqtt`,
+                    `ws://${MQTT_CONFIG.host}:8090/ws`
                 ];
                 
                 console.log('🔌 Attempting to connect to MQTT broker...');

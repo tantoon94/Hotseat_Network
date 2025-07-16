@@ -46,10 +46,11 @@
         
         // Test different connection URLs
         const testUrls = [
-            `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
-            `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
-            `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
-            `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`
+            `wss://mqtt.cetools.org:8081`,
+            `wss://mqtt.cetools.org:8081/mqtt`,
+            `wss://mqtt.cetools.org:8081/ws`,
+            `ws://mqtt.cetools.org:8090/mqtt`,
+            `ws://mqtt.cetools.org:8090/ws`
         ];
         
         let currentTest = 0;
