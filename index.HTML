@@ -599,16 +599,10 @@
             generateSeatCards();
         });
 
-        // MQTT Connection
+        // MQTT Connection with GitHub Pages compatibility
         function initializeMQTT() {
-            // Load credentials from external file (you'll need to create this)
-            loadMQTTCredentials().then(() => {
-                connectMQTT();
-            }).catch(() => {
-                // Fallback to demo mode
-                console.log('Using demo mode - no MQTT connection');
-                simulateMQTTData();
-            });
+            // Initialize MQTT connection with automatic fallback to demo mode
+            connectToMQTT();
         }
 
         async function loadMQTTCredentials() {
@@ -623,107 +617,142 @@
             }
         }
 
-        function connectMQTT() {
-            console.log('MQTT_CONFIG loaded:', MQTT_CONFIG);
-            
-            // Try different connection URLs
-            const connectUrls = [
-                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
-                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
-                `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`
-            ];
-            
-            console.log('Attempting to connect to MQTT broker...');
-            console.log('MQTT Config - Host:', MQTT_CONFIG.host, 'Port:', MQTT_CONFIG.port);
-            console.log('Trying URLs:', connectUrls);
-            
-            // Try the first URL
-            const connectUrl = connectUrls[0];
-            console.log('Using URL:', connectUrl);
-            
-            mqttClient = mqtt.connect(connectUrl, {
-                clientId: MQTT_CONFIG.clientId,
-                username: MQTT_CONFIG.username,
-                password: MQTT_CONFIG.password,
-                clean: true,
-                reconnectPeriod: 1000,
-                connectTimeout: 30 * 1000,
-                keepalive: 60
-            });
-
-            mqttClient.on('connect', function() {
-                console.log('✅ Successfully connected to MQTT broker');
-                updateMQTTStatus(true);
-                hideLoading();
+        // Enhanced MQTT connection with GitHub Pages compatibility
+        async function connectToMQTT() {
+            try {
+                // Check if we're on GitHub Pages (HTTPS)
+                const isGitHubPages = window.location.hostname === 'tantoon94.github.io';
+                const isHTTPS = window.location.protocol === 'https:';
                 
-                // Subscribe to both topics
-                console.log('Subscribing to topics...');
-                mqttClient.subscribe('student/ucbqmie/sitting_events', function(err) {
-                    if (err) {
-                        console.error('Error subscribing to sitting_events:', err);
-                    } else {
-                        console.log('✅ Subscribed to student/ucbqmie/sitting_events');
-                    }
-                });
-                mqttClient.subscribe('student/ucbqmie/seat_counts', function(err) {
-                    if (err) {
-                        console.error('Error subscribing to seat_counts:', err);
-                    } else {
-                        console.log('✅ Subscribed to student/ucbqmie/seat_counts');
-                    }
-                });
-            });
-
-            mqttClient.on('message', function(topic, message) {
-                try {
-                    const data = JSON.parse(message.toString());
-                    console.log('Received MQTT data from topic:', topic, data);
+                if (isGitHubPages || isHTTPS) {
+                    console.log('🌐 Detected GitHub Pages or HTTPS - MQTT connection may be restricted');
+                    console.log('📱 Using demo data mode for live dashboard');
                     
-                    if (topic === 'student/ucbqmie/sitting_events') {
-                        // Handle sitting events data with exact format
-                        if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
-                            console.log('Processing sitting event for seat:', data.seat_id);
-                            updateSeatData(data.seat_id.toString(), data);
-                            
-                            // Also call the enhanced handler for Firestore integration
-                            handleSittingEvents(data);
-                        }
-                    } else if (topic === 'student/ucbqmie/seat_counts') {
-                        // Handle seat counts data with exact format
-                        handleSeatCounts(data);
-                    }
-                } catch (error) {
-                    console.error('Error parsing MQTT message:', error);
+                    // Show user-friendly message
+                    updateMQTTStatus(false, 'Demo Mode (GitHub Pages)');
+                    
+                    // Start demo data immediately
+                    simulateMQTTData();
+                    return;
                 }
-            });
+                
+                // Load MQTT configuration
+                const response = await fetch('mqtt-config.json');
+                if (!response.ok) {
+                    throw new Error('Failed to load MQTT configuration');
+                }
+                
+                const MQTT_CONFIG = await response.json();
+                console.log('📡 MQTT Config loaded:', MQTT_CONFIG);
+                
+                // Try different connection URLs with fallbacks
+                const connectUrls = [
+                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+                    `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`
+                ];
+                
+                console.log('🔌 Attempting to connect to MQTT broker...');
+                console.log('📍 Host:', MQTT_CONFIG.host, 'Port:', MQTT_CONFIG.port);
+                console.log('🔗 Trying URLs:', connectUrls);
+                
+                // Try the first URL
+                const connectUrl = connectUrls[0];
+                console.log('🎯 Using URL:', connectUrl);
+                
+                mqttClient = mqtt.connect(connectUrl, {
+                    clientId: MQTT_CONFIG.clientId || `hotseat_${Math.random().toString(36).substr(2, 9)}`,
+                    username: MQTT_CONFIG.username,
+                    password: MQTT_CONFIG.password,
+                    clean: true,
+                    reconnectPeriod: 1000,
+                    connectTimeout: 30 * 1000,
+                    keepalive: 60
+                });
 
-            mqttClient.on('error', function(error) {
-                console.error('❌ MQTT Error:', error);
-                updateMQTTStatus(false);
-            });
+                mqttClient.on('connect', function() {
+                    console.log('✅ Successfully connected to MQTT broker');
+                    updateMQTTStatus(true, 'Connected');
+                    hideLoading();
+                    
+                    // Subscribe to both topics
+                    console.log('📡 Subscribing to topics...');
+                    mqttClient.subscribe('student/ucbqmie/sitting_events', function(err) {
+                        if (err) {
+                            console.error('❌ Error subscribing to sitting_events:', err);
+                        } else {
+                            console.log('✅ Subscribed to student/ucbqmie/sitting_events');
+                        }
+                    });
+                    mqttClient.subscribe('student/ucbqmie/seat_counts', function(err) {
+                        if (err) {
+                            console.error('❌ Error subscribing to seat_counts:', err);
+                        } else {
+                            console.log('✅ Subscribed to student/ucbqmie/seat_counts');
+                        }
+                    });
+                });
 
-            mqttClient.on('close', function() {
-                console.log('🔌 MQTT connection closed');
-                updateMQTTStatus(false);
-            });
+                mqttClient.on('message', function(topic, message) {
+                    try {
+                        const data = JSON.parse(message.toString());
+                        console.log('📨 Received MQTT data from topic:', topic, data);
+                        
+                        if (topic === 'student/ucbqmie/sitting_events') {
+                            // Handle sitting events data with exact format
+                            if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
+                                console.log('🪑 Processing sitting event for seat:', data.seat_id);
+                                updateSeatData(data.seat_id.toString(), data);
+                                
+                                // Also call the enhanced handler for Firestore integration
+                                handleSittingEvents(data);
+                            }
+                        } else if (topic === 'student/ucbqmie/seat_counts') {
+                            // Handle seat counts data with exact format
+                            handleSeatCounts(data);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing MQTT message:', error);
+                    }
+                });
 
-            mqttClient.on('reconnect', function() {
-                console.log('🔄 Attempting to reconnect to MQTT broker...');
-            });
+                mqttClient.on('error', function(error) {
+                    console.error('❌ MQTT Error:', error);
+                    console.log('🔄 Falling back to demo data mode');
+                    updateMQTTStatus(false, 'Demo Mode (Connection Failed)');
+                    simulateMQTTData();
+                });
 
-            mqttClient.on('offline', function() {
-                console.log('📴 MQTT client went offline');
-                updateMQTTStatus(false);
-            });
+                mqttClient.on('close', function() {
+                    console.log('🔌 MQTT connection closed');
+                    updateMQTTStatus(false, 'Demo Mode (Disconnected)');
+                    // Don't start demo data here to avoid conflicts
+                });
+
+                mqttClient.on('reconnect', function() {
+                    console.log('🔄 Attempting to reconnect to MQTT broker...');
+                });
+
+                mqttClient.on('offline', function() {
+                    console.log('📴 MQTT client went offline');
+                    updateMQTTStatus(false, 'Demo Mode (Offline)');
+                });
+                
+            } catch (error) {
+                console.error('❌ Failed to connect to MQTT:', error);
+                console.log('🔄 Falling back to demo data mode');
+                updateMQTTStatus(false, 'Demo Mode (Setup Failed)');
+                simulateMQTTData();
+            }
         }
 
-        function updateMQTTStatus(connected) {
+        function updateMQTTStatus(connected, message = '') {
             const statusEl = document.getElementById('mqtt-status');
             if (connected) {
-                statusEl.textContent = 'MQTT: Connected';
+                statusEl.textContent = `MQTT: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-connected';
             } else {
-                statusEl.textContent = 'MQTT: Disconnected';
+                statusEl.textContent = `MQTT: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-disconnected';
             }
         }
