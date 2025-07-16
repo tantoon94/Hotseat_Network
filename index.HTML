@@ -643,8 +643,8 @@
                     `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`,
                     `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
                     `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
-                    `ws://${MQTT_CONFIG.host}:8090/mqtt`,
-                    `ws://${MQTT_CONFIG.host}:8090/ws`
+                    `wss://${MQTT_CONFIG.host}:8090/mqtt`,
+                    `ws://${MQTT_CONFIG.host}:8090/mqtt`
                 ];
                 
                 console.log('🔌 Attempting to connect to MQTT broker...');

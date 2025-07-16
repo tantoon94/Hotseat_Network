@@ -44,13 +44,13 @@
         log('Starting MQTT connection test...');
         log(`Host: ${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`);
         
-        // Test different connection URLs
+        // Test different connection URLs - prioritize the secure endpoint
         const testUrls = [
             `wss://mqtt.cetools.org:8081`,
             `wss://mqtt.cetools.org:8081/mqtt`,
             `wss://mqtt.cetools.org:8081/ws`,
-            `ws://mqtt.cetools.org:8090/mqtt`,
-            `ws://mqtt.cetools.org:8090/ws`
+            `wss://mqtt.cetools.org:8090/mqtt`,
+            `ws://mqtt.cetools.org:8090/mqtt`
         ];
         
         let currentTest = 0;
