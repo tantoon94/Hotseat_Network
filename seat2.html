@@ -464,29 +464,24 @@
             if (!firestoreEnabled) return;
             
             try {
-                // Load today's usage data
-                const todayUsage = await FirestoreService.getTodayUsage();
-                if (todayUsage) {
+                // Load today's heatmap data
+                const heatmapData = await FirestoreService.getTodayHeatmapData();
+                if (heatmapData) {
                     // Convert Firestore data to heatmap format
                     for (let seat = 1; seat <= 5; seat++) {
                         for (let hour = 10; hour <= 18; hour++) {
                             const key = `${seat}-${hour}`;
-                            const count = todayUsage[`seat_${seat}`]?.[`hour_${hour}`] || 0;
+                            const count = heatmapData[seat]?.[hour] || 0;
                             heatmapData[key] = count;
                         }
                     }
                     updateHeatmapData();
                 }
                 
-                // Load person type counts
-                const personData = await FirestoreService.getPersonTypeCounts();
-                if (personData) {
-                    personTypeCounts = {
-                        'Adult': personData.Adult || 0,
-                        'Child': personData.Child || 0,
-                        'No Person': personData['No Person'] || 0
-                    };
-                    updatePersonDonutChart();
+                // Load seat 2 specific data
+                const seat2Data = await FirestoreService.getSeatData(2);
+                if (seat2Data && seat2Data.current_session) {
+                    updateSeatData('2', seat2Data.current_session);
                 }
                 
                 console.log('✅ Firestore data loaded successfully');
@@ -495,67 +490,164 @@
             }
         }
 
-        // MQTT Connection
-        function initializeMQTT() {
-            const connectUrl = `ws://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`;
-            console.log('Attempting to connect to MQTT broker:', connectUrl);
-            
-            mqttClient = mqtt.connect(connectUrl, {
-                clientId: MQTT_CONFIG.clientId,
-                username: MQTT_CONFIG.username,
-                password: MQTT_CONFIG.password,
-                clean: true,
-                reconnectPeriod: 1000,
-                connectTimeout: 30 * 1000,
-                keepalive: 60
-            });
+        // Enhanced MQTT Connection with GitHub Pages compatibility
+        async function initializeMQTT() {
+            try {
+                // Check if we're on GitHub Pages (HTTPS)
+                const isGitHubPages = window.location.hostname === 'tantoon94.github.io';
+                const isHTTPS = window.location.protocol === 'https:';
+                
+                if (isGitHubPages || isHTTPS) {
+                    console.log('🌐 Detected GitHub Pages or HTTPS - attempting secure MQTT connection');
+                    console.log('🔒 Will try WSS connections first for compatibility');
+                }
+                
+                // Load MQTT configuration
+                const response = await fetch('mqtt-config.json');
+                if (!response.ok) {
+                    throw new Error('Failed to load MQTT configuration');
+                }
+                
+                const MQTT_CONFIG = await response.json();
+                console.log('📡 MQTT Config loaded:', MQTT_CONFIG);
+                
+                // Try different connection URLs with fallbacks (secure first)
+                const connectUrls = [
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`,
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
+                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+                    `ws://${MQTT_CONFIG.host}:8090/mqtt`,
+                    `ws://${MQTT_CONFIG.host}:8090/ws`
+                ];
+                
+                console.log('🔌 Attempting to connect to MQTT broker...');
+                console.log('📍 Host:', MQTT_CONFIG.host, 'Port:', MQTT_CONFIG.port);
+                console.log('🔗 Trying URLs:', connectUrls);
+                
+                // Try the first URL
+                const connectUrl = connectUrls[0];
+                console.log('🎯 Using URL:', connectUrl);
+                
+                mqttClient = mqtt.connect(connectUrl, {
+                    clientId: MQTT_CONFIG.clientId || `hotseat_${Math.random().toString(36).substr(2, 9)}`,
+                    username: MQTT_CONFIG.username,
+                    password: MQTT_CONFIG.password,
+                    clean: true,
+                    reconnectPeriod: 1000,
+                    connectTimeout: 30 * 1000,
+                    keepalive: 60
+                });
 
             mqttClient.on('connect', function() {
                 console.log('✅ Successfully connected to MQTT broker');
-                updateMQTTStatus(true);
+                updateMQTTStatus(true, 'Connected');
                 
                 // Subscribe to both topics
-                mqttClient.subscribe('student/ucbqmie/sitting_events');
-                mqttClient.subscribe('student/ucbqmie/seat_counts');
+                console.log('📡 Subscribing to topics...');
+                mqttClient.subscribe('student/ucbqmie/sitting_events', function(err) {
+                    if (err) {
+                        console.error('❌ Error subscribing to sitting_events:', err);
+                    } else {
+                        console.log('✅ Subscribed to student/ucbqmie/sitting_events');
+                    }
+                });
+                mqttClient.subscribe('student/ucbqmie/seat_counts', function(err) {
+                    if (err) {
+                        console.error('❌ Error subscribing to seat_counts:', err);
+                    } else {
+                        console.log('✅ Subscribed to student/ucbqmie/seat_counts');
+                    }
+                });
             });
 
             mqttClient.on('message', function(topic, message) {
                 try {
                     const data = JSON.parse(message.toString());
-                    console.log('Received MQTT data from topic:', topic, data);
+                    console.log('📨 Received MQTT data from topic:', topic, data);
                     
                     if (topic === 'student/ucbqmie/sitting_events') {
                         if (data.seat_id && data.seat_id >= 1 && data.seat_id <= 5) {
+                            console.log('🪑 Processing sitting event for seat:', data.seat_id);
                             updateSeatData(data.seat_id.toString(), data);
                         }
                     } else if (topic === 'student/ucbqmie/seat_counts') {
                         handleSeatCounts(data);
                     }
                 } catch (error) {
-                    console.error('Error parsing MQTT message:', error);
+                    console.error('❌ Error parsing MQTT message:', error);
                 }
             });
 
             mqttClient.on('error', function(error) {
                 console.error('❌ MQTT Error:', error);
-                updateMQTTStatus(false);
+                console.log('🔄 Falling back to demo data mode');
+                updateMQTTStatus(false, 'Demo Mode (Connection Failed)');
+                simulateMQTTData();
             });
 
             mqttClient.on('close', function() {
                 console.log('🔌 MQTT connection closed');
-                updateMQTTStatus(false);
+                updateMQTTStatus(false, 'Demo Mode (Disconnected)');
             });
+
+            mqttClient.on('reconnect', function() {
+                console.log('🔄 Attempting to reconnect to MQTT broker...');
+            });
+
+            mqttClient.on('offline', function() {
+                console.log('📴 MQTT client went offline');
+                updateMQTTStatus(false, 'Demo Mode (Offline)');
+            });
+            
+        } catch (error) {
+            console.error('❌ Failed to connect to MQTT:', error);
+            console.log('🔄 Falling back to demo data mode');
+            updateMQTTStatus(false, 'Demo Mode (Setup Failed)');
+            simulateMQTTData();
+        }
         }
 
-        function updateMQTTStatus(connected) {
+        function updateMQTTStatus(connected, message = '') {
             const statusEl = document.getElementById('mqtt-status');
             if (connected) {
-                statusEl.textContent = 'MQTT: Connected';
+                statusEl.textContent = `MQTT: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-connected';
             } else {
-                statusEl.textContent = 'MQTT: Disconnected';
+                statusEl.textContent = `MQTT: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-disconnected';
             }
+        }
+
+        // Demo data simulation for when MQTT is not available
+        function simulateMQTTData() {
+            console.log('🎭 Starting demo data simulation for Seat 2');
+            
+            // Generate initial data for Seat 2
+            const mockData = {
+                seat_id: 2,
+                count: Math.floor(Math.random() * 50) + 10,
+                session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
+                session_duration_ms: Math.floor(Math.random() * 1800000) + 300000, // 5-35 minutes in milliseconds
+                average_resistance: Math.random() * 50 + 10,
+                person_type: Math.random() > 0.5 ? "Adult" : "Child"
+            };
+            
+            updateSeatData('2', mockData);
+            
+            // Simulate real-time updates every 5 seconds
+            setInterval(() => {
+                const mockData = {
+                    seat_id: 2,
+                    count: Math.floor(Math.random() * 50) + 10,
+                    session_start_datetime: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                    session_end_datetime: new Date(Date.now() + Math.random() * 300000).toISOString().replace('T', ' ').substring(0, 19),
+                    session_duration_ms: Math.floor(Math.random() * 1800000) + 300000,
+                    average_resistance: Math.random() * 50 + 10,
+                    person_type: Math.random() > 0.5 ? "Adult" : "Child"
+                };
+                updateSeatData('2', mockData);
+            }, 5000);
         }
 
         function updateSeatData(seatId, data) {
