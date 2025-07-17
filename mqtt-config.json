@@ -1,0 +1,8 @@
+{
+  "host": "mqtt.cetools.org",
+  "port": 8090,
+  "username": "student",
+  "password": "ce2021-mqtt-forget-whale",
+  "clientId": "hotseat-dashboard",
+  "protocol": "ws"
+} 

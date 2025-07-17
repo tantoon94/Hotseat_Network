@@ -20,15 +20,15 @@ gradle-app.setting
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
 
-# Ignore MQTT config (contains credentials)
-mqtt-config.json
+# Note: mqtt-config.json is now included for GitHub Pages deployment
+# If you need to exclude it for security, create a separate .gitignore for local development
 
 # Ignore Python cache
 __pycache__/
 *.pyc
 
-# Ignore QR code output directory
-qr_codes/
+# Note: qr_codes/ directory is now included for GitHub Pages deployment
+# Generated QR codes will be available on the live site
 
 # Ignore environment files
 .env

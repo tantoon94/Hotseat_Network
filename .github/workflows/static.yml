@@ -1,0 +1,42 @@
+name: Prepare for GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install qrcode[pil]
+        
+    - name: Generate QR codes
+      run: |
+        python generate_qr_codes.py
+        
+    - name: Verify files exist
+      run: |
+        echo "Checking for required files..."
+        ls -la
+        echo "Checking for index.html..."
+        test -f index.html && echo "✅ index.html exists" || echo "❌ index.html missing"
+        echo "Checking for mqtt-config.json..."
+        test -f mqtt-config.json && echo "✅ mqtt-config.json exists" || echo "❌ mqtt-config.json missing"
+        echo "Checking for firebase-config.js..."
+        test -f firebase-config.js && echo "✅ firebase-config.js exists" || echo "❌ firebase-config.js missing"
+        echo "Checking for qr_codes directory..."
+        test -d qr_codes && echo "✅ qr_codes directory exists" || echo "❌ qr_codes directory missing" 
