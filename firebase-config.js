@@ -382,6 +382,199 @@ class FirestoreService {
     }
 }
 
+// NEW: Live Data Service for loading data from Firestore instead of MQTT
+class LiveDataService {
+    constructor() {
+        this.listeners = new Map();
+        this.cache = new Map();
+        this.isListening = false;
+        this.updateCallbacks = [];
+    }
+    
+    // Initialize real-time listeners for all seats
+    async initializeLiveData() {
+        if (!FirestoreService.isAvailable()) {
+            console.warn('⚠️ Firestore not available, cannot initialize live data');
+            return false;
+        }
+        
+        try {
+            console.log('🔄 Initializing live data from Firestore...');
+            
+            // Set up real-time listeners for each seat
+            for (let seatId = 1; seatId <= 5; seatId++) {
+                await this.setupSeatListener(seatId);
+            }
+            
+            this.isListening = true;
+            console.log('✅ Live data listeners initialized successfully');
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Error initializing live data:', error);
+            return false;
+        }
+    }
+    
+    // Set up real-time listener for a specific seat
+    async setupSeatListener(seatId) {
+        if (!FirestoreService.isAvailable()) {
+            return;
+        }
+        
+        try {
+            const seatRef = db.collection(COLLECTION_NAME).doc(`seat_${seatId}`);
+            
+            // Create real-time listener
+            const unsubscribe = seatRef.onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    this.handleSeatUpdate(seatId, data);
+                } else {
+                    console.log(`⚠️ No data found for seat ${seatId}`);
+                }
+            }, (error) => {
+                console.error(`❌ Error listening to seat ${seatId}:`, error);
+            });
+            
+            // Store the unsubscribe function
+            this.listeners.set(seatId, unsubscribe);
+            console.log(`✅ Live listener set up for seat ${seatId}`);
+            
+        } catch (error) {
+            console.error(`❌ Error setting up listener for seat ${seatId}:`, error);
+        }
+    }
+    
+    // Handle real-time updates from Firestore
+    handleSeatUpdate(seatId, data) {
+        try {
+            // Update cache
+            this.cache.set(seatId, data);
+            
+            // Prepare data in the format expected by the UI
+            const uiData = this.formatDataForUI(seatId, data);
+            
+            // Notify all registered callbacks
+            this.updateCallbacks.forEach(callback => {
+                try {
+                    callback(seatId, uiData);
+                } catch (error) {
+                    console.error('❌ Error in update callback:', error);
+                }
+            });
+            
+            console.log(`📊 Live update for seat ${seatId}:`, uiData);
+            
+        } catch (error) {
+            console.error(`❌ Error handling seat update for ${seatId}:`, error);
+        }
+    }
+    
+    // Format Firestore data for UI consumption
+    formatDataForUI(seatId, data) {
+        const currentSession = data.current_session || {};
+        const today = new Date().toISOString().split('T')[0];
+        const dailyCount = data.daily_counts?.[today] || 0;
+        
+        return {
+            seat_id: seatId,
+            count: dailyCount,
+            session_start_datetime: currentSession.session_start_datetime || '',
+            session_end_datetime: currentSession.session_end_datetime || '',
+            session_duration_ms: currentSession.session_duration_ms || 0,
+            average_resistance: currentSession.average_resistance || 0,
+            person_type: currentSession.person_type || 'Unknown',
+            last_update: data.last_session_update || data.last_count_update || new Date().toISOString()
+        };
+    }
+    
+    // Register callback for data updates
+    onDataUpdate(callback) {
+        this.updateCallbacks.push(callback);
+        console.log('📝 Registered data update callback');
+    }
+    
+    // Get current cached data for all seats
+    getAllSeatsData() {
+        const allData = {};
+        for (let seatId = 1; seatId <= 5; seatId++) {
+            const cachedData = this.cache.get(seatId);
+            if (cachedData) {
+                allData[seatId] = this.formatDataForUI(seatId, cachedData);
+            }
+        }
+        return allData;
+    }
+    
+    // Get current cached data for a specific seat
+    getSeatData(seatId) {
+        const cachedData = this.cache.get(seatId);
+        if (cachedData) {
+            return this.formatDataForUI(seatId, cachedData);
+        }
+        return null;
+    }
+    
+    // Load initial data from Firestore (for first load)
+    async loadInitialData() {
+        if (!FirestoreService.isAvailable()) {
+            console.warn('⚠️ Firestore not available, cannot load initial data');
+            return {};
+        }
+        
+        try {
+            console.log('📥 Loading initial data from Firestore...');
+            const allSeatsData = await FirestoreService.getAllSeatsData();
+            
+            // Cache the data
+            Object.keys(allSeatsData).forEach(seatId => {
+                this.cache.set(parseInt(seatId), allSeatsData[seatId]);
+            });
+            
+            console.log('✅ Initial data loaded and cached');
+            return this.getAllSeatsData();
+            
+        } catch (error) {
+            console.error('❌ Error loading initial data:', error);
+            return {};
+        }
+    }
+    
+    // Stop all listeners
+    stopListening() {
+        console.log('🛑 Stopping all live data listeners...');
+        
+        this.listeners.forEach((unsubscribe, seatId) => {
+            try {
+                unsubscribe();
+                console.log(`✅ Stopped listener for seat ${seatId}`);
+            } catch (error) {
+                console.error(`❌ Error stopping listener for seat ${seatId}:`, error);
+            }
+        });
+        
+        this.listeners.clear();
+        this.isListening = false;
+        console.log('✅ All listeners stopped');
+    }
+    
+    // Check if live data is available
+    isAvailable() {
+        return FirestoreService.isAvailable() && this.isListening;
+    }
+    
+    // Get connection status
+    getStatus() {
+        return {
+            firestoreAvailable: FirestoreService.isAvailable(),
+            listening: this.isListening,
+            cachedSeats: this.cache.size,
+            activeListeners: this.listeners.size
+        };
+    }
+}
+
 // Export for use in other files
 window.FirestoreService = FirestoreService;
 window.COLLECTION_NAME = COLLECTION_NAME; 

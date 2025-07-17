@@ -436,7 +436,7 @@
             }
         }
 
-        /* MQTT Status */
+        /* Data Source Status */
         .mqtt-status {
             position: fixed;
             top: 20px;
@@ -449,6 +449,18 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .mqtt-status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
         }
 
         .mqtt-connected {
@@ -458,12 +470,17 @@
         .mqtt-disconnected {
             background: rgba(231, 76, 60, 0.8);
         }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
-    <!-- MQTT Status Indicator -->
+    <!-- Data Source Status Indicator -->
     <div id="mqtt-status" class="mqtt-status mqtt-disconnected">
-        MQTT: Disconnected
+        Loading...
     </div>
 
     <!-- AR Instructions -->
@@ -593,18 +610,115 @@
         let charts = {};
         let mqttConnectionAttempts = 0;
         const MAX_MQTT_ATTEMPTS = 3;
+        let liveDataService = null;
+        let dataSource = 'firestore'; // 'firestore' or 'mqtt' or 'demo'
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
-            initializeMQTT();
+            initializeDataSources();
             setupEventListeners();
             generateSeatCards();
         });
 
-        // MQTT Connection with GitHub Pages compatibility
-        function initializeMQTT() {
-            // Initialize MQTT connection with automatic fallback to demo mode
-            connectToMQTT();
+        // Initialize data sources with priority: Firestore > MQTT > Demo
+        async function initializeDataSources() {
+            console.log('🚀 Initializing data sources...');
+            
+            // Try Firestore first (preferred method)
+            if (await initializeFirestoreData()) {
+                dataSource = 'firestore';
+                console.log('✅ Using Firestore as primary data source');
+                return;
+            }
+            
+            // Fallback to MQTT
+            if (await initializeMQTT()) {
+                dataSource = 'mqtt';
+                console.log('✅ Using MQTT as data source');
+                return;
+            }
+            
+            // Final fallback to demo data
+            dataSource = 'demo';
+            console.log('✅ Using demo data as fallback');
+            simulateMQTTData();
+        }
+        
+        // Initialize Firestore as primary data source
+        async function initializeFirestoreData() {
+            try {
+                // Wait for Firebase to be available
+                await waitForFirebase();
+                
+                if (typeof LiveDataService !== 'undefined') {
+                    liveDataService = new LiveDataService();
+                    
+                    // Load initial data
+                    const initialData = await liveDataService.loadInitialData();
+                    if (Object.keys(initialData).length > 0) {
+                        // Update UI with initial data
+                        Object.keys(initialData).forEach(seatId => {
+                            updateSeatData(seatId, initialData[seatId]);
+                        });
+                        
+                        // Set up real-time listeners
+                        const success = await liveDataService.initializeLiveData();
+                        if (success) {
+                            // Register callback for real-time updates
+                            liveDataService.onDataUpdate((seatId, data) => {
+                                updateSeatData(seatId.toString(), data);
+                            });
+                            
+                            hideLoading();
+                            updateMQTTStatus(true, 'Firestore Live');
+                            return true;
+                        }
+                    }
+                }
+                
+                console.log('⚠️ Firestore not available, falling back to MQTT');
+                return false;
+                
+            } catch (error) {
+                console.error('❌ Error initializing Firestore data:', error);
+                return false;
+            }
+        }
+        
+        // Wait for Firebase to be available
+        function waitForFirebase() {
+            return new Promise((resolve, reject) => {
+                const maxAttempts = 50; // 5 seconds
+                let attempts = 0;
+                
+                const checkFirebase = () => {
+                    attempts++;
+                    
+                    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+                        console.log('✅ Firebase is ready');
+                        resolve();
+                    } else if (attempts >= maxAttempts) {
+                        console.warn('⚠️ Firebase not ready after 5 seconds');
+                        reject(new Error('Firebase timeout'));
+                    } else {
+                        setTimeout(checkFirebase, 100);
+                    }
+                };
+                
+                checkFirebase();
+            });
+        }
+        
+        // MQTT Connection with GitHub Pages compatibility (now as fallback)
+        async function initializeMQTT() {
+            try {
+                // Initialize MQTT connection with automatic fallback to demo mode
+                await connectToMQTT();
+                return mqttClient && mqttClient.connected;
+            } catch (error) {
+                console.error('❌ MQTT initialization failed:', error);
+                return false;
+            }
         }
 
         async function loadMQTTCredentials() {
@@ -762,10 +876,10 @@
         function updateMQTTStatus(connected, message = '') {
             const statusEl = document.getElementById('mqtt-status');
             if (connected) {
-                statusEl.textContent = `MQTT: ${message}`;
+                statusEl.textContent = `${dataSource.toUpperCase()}: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-connected';
             } else {
-                statusEl.textContent = `MQTT: ${message}`;
+                statusEl.textContent = `${dataSource.toUpperCase()}: ${message}`;
                 statusEl.className = 'mqtt-status mqtt-disconnected';
             }
         }
@@ -836,6 +950,33 @@
                 clearInterval(demoDataInterval);
                 demoDataInterval = null;
                 console.log('🛑 Demo data simulation stopped');
+            }
+        }
+        
+        // Get current data from the appropriate source
+        function getCurrentData() {
+            switch (dataSource) {
+                case 'firestore':
+                    return liveDataService ? liveDataService.getAllSeatsData() : {};
+                case 'mqtt':
+                    return seatData;
+                case 'demo':
+                    return seatData;
+                default:
+                    return {};
+            }
+        }
+        
+        // Get data for a specific seat from the appropriate source
+        function getSeatData(seatId) {
+            switch (dataSource) {
+                case 'firestore':
+                    return liveDataService ? liveDataService.getSeatData(seatId) : null;
+                case 'mqtt':
+                case 'demo':
+                    return seatData[seatId] || null;
+                default:
+                    return null;
             }
         }
 
@@ -1021,12 +1162,15 @@
                 createCharts();
             }
 
+            // Get current data from the appropriate source
+            const currentData = getCurrentData();
+
             // Update count chart with live data
             const countData = [];
             const labels = [];
             for (let i = 1; i <= 5; i++) {
                 const seatId = i.toString();
-                const data = seatData[seatId];
+                const data = currentData[seatId];
                 countData.push(data && data.count ? data.count : 0);
                 labels.push(`Seat ${i}`);
             }
@@ -1039,7 +1183,7 @@
             const resistanceData = [];
             for (let i = 1; i <= 5; i++) {
                 const seatId = i.toString();
-                const data = seatData[seatId];
+                const data = currentData[seatId];
                 resistanceData.push(data && data.average_resistance ? data.average_resistance : 0);
             }
             charts.resistance.data.datasets[0].data = resistanceData;

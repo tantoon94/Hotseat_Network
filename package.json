@@ -1,0 +1,31 @@
+{
+  "name": "hotseat-network-mqtt-bridge",
+  "version": "1.0.0",
+  "description": "MQTT to Firestore bridge service for Hotseat Network",
+  "main": "mqtt-to-firestore.js",
+  "scripts": {
+    "start": "node mqtt-to-firestore.js",
+    "dev": "nodemon mqtt-to-firestore.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mqtt",
+    "firestore",
+    "firebase",
+    "iot",
+    "real-time",
+    "hotseat"
+  ],
+  "author": "Hotseat Network Team",
+  "license": "MIT",
+  "dependencies": {
+    "mqtt": "^4.3.7",
+    "firebase-admin": "^11.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 
