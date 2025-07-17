@@ -6,18 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <!-- A-Frame for AR -->
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js" onerror="console.warn('A-Frame failed to load')"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js" onerror="console.warn('AR.js failed to load')"></script>
     
     <!-- Chart.js for data visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="console.warn('Chart.js failed to load')"></script>
     
     <!-- MQTT.js for real-time data -->
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js" onerror="console.warn('MQTT.js failed to load')"></script>
     
     <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js" onerror="console.warn('Firebase App failed to load')"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore failed to load')"></script>
     
     <style>
         * {
@@ -591,6 +591,8 @@
         let seatData = {};
         let currentARSeat = null;
         let charts = {};
+        let mqttConnectionAttempts = 0;
+        const MAX_MQTT_ATTEMPTS = 3;
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -609,6 +611,9 @@
             try {
                 // Add cache-busting parameter to force fresh load
                 const response = await fetch('mqtt-config.json?t=' + Date.now());
+                if (!response.ok) {
+                    throw new Error('MQTT config file not found');
+                }
                 const config = await response.json();
                 console.log('Loaded MQTT config:', config);
                 Object.assign(MQTT_CONFIG, config);
@@ -620,6 +625,9 @@
         // Enhanced MQTT connection with GitHub Pages compatibility
         async function connectToMQTT() {
             try {
+                // Load MQTT configuration first
+                await loadMQTTCredentials();
+                
                 // Check if we're on GitHub Pages (HTTPS)
                 const isGitHubPages = window.location.hostname === 'tantoon94.github.io';
                 const isHTTPS = window.location.protocol === 'https:';
@@ -629,20 +637,12 @@
                     console.log('🔒 Will try WSS connections first for compatibility');
                 }
                 
-                // Load MQTT configuration
-                const response = await fetch('mqtt-config.json');
-                if (!response.ok) {
-                    throw new Error('Failed to load MQTT configuration');
-                }
-                
-                const MQTT_CONFIG = await response.json();
                 console.log('📡 MQTT Config loaded:', MQTT_CONFIG);
                 
                 // Try different connection URLs with fallbacks (secure first)
                 const connectUrls = [
-                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`,
-                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`,
-                    `wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/ws`,
+                    `wss://${MQTT_CONFIG.host}:8081`,
+                    `wss://${MQTT_CONFIG.host}:8081/mqtt`,
                     `wss://${MQTT_CONFIG.host}:8090/mqtt`,
                     `ws://${MQTT_CONFIG.host}:8090/mqtt`
                 ];
@@ -669,6 +669,10 @@
                     console.log('✅ Successfully connected to MQTT broker');
                     updateMQTTStatus(true, 'Connected');
                     hideLoading();
+                    mqttConnectionAttempts = 0; // Reset attempts on successful connection
+                    
+                    // Stop demo data if it's running
+                    stopDemoData();
                     
                     // Subscribe to both topics
                     console.log('📡 Subscribing to topics...');
@@ -713,9 +717,16 @@
 
                 mqttClient.on('error', function(error) {
                     console.error('❌ MQTT Error:', error);
-                    console.log('🔄 Falling back to demo data mode');
-                    updateMQTTStatus(false, 'Demo Mode (Connection Failed)');
-                    simulateMQTTData();
+                    mqttConnectionAttempts++;
+                    
+                    if (mqttConnectionAttempts >= MAX_MQTT_ATTEMPTS) {
+                        console.log('🔄 Max connection attempts reached, falling back to demo data mode');
+                        updateMQTTStatus(false, 'Demo Mode (Connection Failed)');
+                        simulateMQTTData();
+                    } else {
+                        console.log(`🔄 Connection attempt ${mqttConnectionAttempts}/${MAX_MQTT_ATTEMPTS} failed, retrying...`);
+                        setTimeout(() => connectToMQTT(), 2000);
+                    }
                 });
 
                 mqttClient.on('close', function() {
@@ -735,9 +746,16 @@
                 
             } catch (error) {
                 console.error('❌ Failed to connect to MQTT:', error);
-                console.log('🔄 Falling back to demo data mode');
-                updateMQTTStatus(false, 'Demo Mode (Setup Failed)');
-                simulateMQTTData();
+                mqttConnectionAttempts++;
+                
+                if (mqttConnectionAttempts >= MAX_MQTT_ATTEMPTS) {
+                    console.log('🔄 Max connection attempts reached, falling back to demo data mode');
+                    updateMQTTStatus(false, 'Demo Mode (Setup Failed)');
+                    simulateMQTTData();
+                } else {
+                    console.log(`🔄 Connection attempt ${mqttConnectionAttempts}/${MAX_MQTT_ATTEMPTS} failed, retrying...`);
+                    setTimeout(() => connectToMQTT(), 2000);
+                }
             }
         }
 
@@ -753,8 +771,17 @@
         }
 
         // Demo data simulation
+        let demoDataInterval = null;
+        
         function simulateMQTTData() {
             hideLoading();
+            
+            // Clear any existing demo data interval
+            if (demoDataInterval) {
+                clearInterval(demoDataInterval);
+            }
+            
+            console.log('🎭 Starting demo data simulation...');
             
             // Generate initial data using the actual sensor data structure
             for (let i = 1; i <= 5; i++) {
@@ -769,14 +796,17 @@
                 };
                 updateSeatData(i.toString(), mockData);
                 
-                // Also save to Firestore if available
-                if (firebaseInitialized && typeof handleSittingEvents === 'function') {
-                    handleSittingEvents(mockData);
+                // Also save to Firestore if available (but don't spam it)
+                if (firebaseInitialized && typeof FirestoreService !== 'undefined' && FirestoreService.isAvailable()) {
+                    // Only save to Firestore occasionally to avoid excessive writes
+                    if (Math.random() > 0.7) {
+                        handleSittingEvents(mockData);
+                    }
                 }
             }
 
             // Simulate real-time updates
-            setInterval(() => {
+            demoDataInterval = setInterval(() => {
                 for (let i = 1; i <= 5; i++) {
                     const mockData = {
                         seat_id: i,
@@ -789,12 +819,24 @@
                     };
                     updateSeatData(i.toString(), mockData);
                     
-                    // Also save to Firestore if available
-                    if (firebaseInitialized && typeof handleSittingEvents === 'function') {
-                        handleSittingEvents(mockData);
+                    // Also save to Firestore if available (but don't spam it)
+                    if (firebaseInitialized && typeof FirestoreService !== 'undefined' && FirestoreService.isAvailable()) {
+                        // Only save to Firestore occasionally to avoid excessive writes
+                        if (Math.random() > 0.8) {
+                            handleSittingEvents(mockData);
+                        }
                     }
                 }
             }, 5000);
+        }
+        
+        // Function to stop demo data
+        function stopDemoData() {
+            if (demoDataInterval) {
+                clearInterval(demoDataInterval);
+                demoDataInterval = null;
+                console.log('🛑 Demo data simulation stopped');
+            }
         }
 
         // Event Listeners
@@ -1213,28 +1255,39 @@
                     script.src = 'firebase-config.js';
                     script.onload = () => {
                         console.log('✅ Firebase configuration loaded');
-                        firebaseInitialized = true;
                         initializeFirebase();
                     };
                     script.onerror = () => {
                         console.warn('⚠️ Could not load Firebase configuration');
+                        firebaseInitialized = false;
                     };
                     document.head.appendChild(script);
                 } else {
                     console.warn('⚠️ Firebase configuration file not found');
+                    firebaseInitialized = false;
                 }
             } catch (error) {
                 console.warn('⚠️ Error loading Firebase configuration:', error);
+                firebaseInitialized = false;
             }
         }
         
         // Initialize Firebase
         function initializeFirebase() {
-            if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-                console.log('✅ Firebase Firestore initialized successfully');
-                firebaseInitialized = true;
-            } else {
-                console.warn('⚠️ Firebase not configured. Firestore features will be disabled.');
+            try {
+                if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+                    console.log('✅ Firebase Firestore initialized successfully');
+                    firebaseInitialized = true;
+                } else if (typeof firebase !== 'undefined' && firebase.apps.length === 0) {
+                    console.log('✅ Firebase available but not initialized');
+                    firebaseInitialized = true;
+                } else {
+                    console.warn('⚠️ Firebase not configured. Firestore features will be disabled.');
+                    firebaseInitialized = false;
+                }
+            } catch (error) {
+                console.error('❌ Error initializing Firebase:', error);
+                firebaseInitialized = false;
             }
         }
         
